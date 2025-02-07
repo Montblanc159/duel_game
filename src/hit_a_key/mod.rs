@@ -63,7 +63,9 @@ pub struct KeyAssignment([KeyCode; N_KEYS_PER_PLAYER]);
 pub enum PlayerStates {
     Idle,
     Attacking,
+    NotAttacking,
     Dodging,
+    NotDodging
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -89,9 +91,9 @@ struct GameStateTimer(Timer);
 // ================================================================
 
 // TODO:
-// - add stats to player (dodge percentage, hit percentage)
 // - announce bullet number / dodges left
-// - player can choose option and "click" no ammo left / or energy too low ! => luck (Idle|Dodge if available)
+// - logical way to refill ammo (round counter ?)
+// - add buffes
 // - refactor with events
 // - Graphics & anims !!
 
@@ -169,7 +171,13 @@ fn set_player_state(
     keys: Res<ButtonInput<KeyCode>>,
 ) {
     for key in keys.get_pressed() {
-        for (key_assignements, mut player_state, player, dodges, bullets) in &mut query {
+        for (
+            key_assignements,
+            mut player_state,
+            player,
+            dodges,
+            bullets
+        ) in &mut query {
             let requested_state = key_to_player_state(&key_assignements.0, key).unwrap_or(player_state.0);
 
             match requested_state {
@@ -177,14 +185,14 @@ fn set_player_state(
                     if bullets.n > 0 {
                         player_state.0 = requested_state;
                     } else {
-                        println!{"Player {} out of ammo. Can't attack!", player.n}
+                        player_state.0 = PlayerStates::NotAttacking;
                     }
                 },
                 PlayerStates::Dodging => {
                     if dodges.n > 0 {
                         player_state.0 = requested_state;
                     } else {
-                        println!{"Player {} too tired. Can't dodge!", player.n}
+                        player_state.0 = PlayerStates::NotDodging;
                     }
                 },
                 _ => {},
@@ -234,7 +242,7 @@ fn decrease_health(
                     println!("Player 1 misses!");
                 }
             },
-            [PlayerStates::Attacking, PlayerStates::Idle] => {
+            [PlayerStates::Attacking, PlayerStates::Idle | PlayerStates::NotAttacking | PlayerStates::NotDodging] => {
                 if roll_the_dice(marksmanship_0.n) > roll_the_dice(luck_1.n) {
                     println!("Player 2 shot!");
                     health_1.value -= 1;
@@ -242,7 +250,7 @@ fn decrease_health(
                     println!("Player 1 misses!");
                 }
             },
-            [PlayerStates::Idle, PlayerStates::Attacking] => {
+            [PlayerStates::Idle | PlayerStates::NotAttacking | PlayerStates::NotDodging, PlayerStates::Attacking] => {
                 if roll_the_dice(marksmanship_1.n) > roll_the_dice(luck_0.n) {
                     println!("Player 1 shot!");
                     health_0.value -= 1;
