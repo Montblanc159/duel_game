@@ -86,13 +86,14 @@ struct GameState(GameStates);
 #[derive(Resource)]
 struct GameStateTimer(Timer);
 
+#[derive(Resource)]
+struct RoundCounter(u8);
+
 
 // Game
 // ================================================================
 
 // TODO:
-// - announce bullet number / dodges left
-// - logical way to refill ammo (round counter ?)
 // - add buffes
 // - refactor with events
 // - Graphics & anims !!
@@ -101,14 +102,19 @@ impl Plugin for HitAKeyPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(GameState(GameStates::Betting));
         app.insert_resource(GameStateTimer(Timer::from_seconds(8.0, TimerMode::Once)));
+        app.insert_resource(RoundCounter(1));
         app.add_systems(Startup, setup);
         app.add_systems(Update, (
             set_game_state,
             set_player_state.run_if(game_state_is_betting),
             (decrease_health, next_phase).chain().run_if(game_state_is_fighting),
+            print_stats.run_if(game_state_is_rounding_up),
             (
+                check_if_dead.run_if(game_state_is_rounding_up),
                 check_if_out_of_ammo.run_if(game_state_is_rounding_up),
-                check_if_dead.run_if(game_state_is_rounding_up)
+                restore_bullet.run_if(game_state_is_rounding_up),
+                restore_dodge.run_if(game_state_is_rounding_up),
+                increase_round_counter.run_if(game_state_is_rounding_up),
             ).chain()
         ).chain());
     }
@@ -266,9 +272,6 @@ fn decrease_health(
             // [PlayerStates::Idle, PlayerStates::Dodging] => {},
             // [PlayerStates::Idle, PlayerStates::Idle] => {},
         }
-
-        println!("Player 1 HP: {}", health_0.value);
-        println!("Player 2 HP: {}", health_1.value);
     }
 }
 
@@ -293,6 +296,13 @@ fn next_phase(
 
 // Rounding up
 // ----------------------------------------------------------------
+
+fn print_stats(query: Query<(&Player, &Bullets, &Dodges, &Health)>) {
+    for (player, bullets, dodges, health) in &query {
+        println!("Player {} HP: {} Bullets: {} Dodges: {}", player.n, health.value, bullets.n, dodges.n);
+    }
+}
+
 
 fn check_if_dead(mut game_state: ResMut<GameState>, mut query: Query<(&Health, &Player)>) {
     let mut dead= [false, false];
@@ -319,7 +329,6 @@ fn check_if_dead(mut game_state: ResMut<GameState>, mut query: Query<(&Health, &
         },
         [false, false] => {
             println!("Both players still alive. Prepare for next round!");
-            game_state.0 = GameStates::Loading;
         }
     }
 }
@@ -336,9 +345,33 @@ fn check_if_out_of_ammo(mut game_state: ResMut<GameState>, mut query: Query<(&Bu
 
     if out_of_ammo.iter().all(|&x| x == true) {
         println!("Both players are out of ammo. It's a tie!");
-        game_state.0 = GameStates::Menu
+        game_state.0 = GameStates::Menu;
     }
 }
+
+fn restore_dodge(round_counter: Res<RoundCounter>, mut query: Query<&mut Dodges, With<Player>>) {
+    if round_counter.0 > 2 && round_counter.0 % 2 == 0 {
+        for mut dodges in &mut query {
+            dodges.n += 1;
+            println!("1 dodge acquired!");
+        }
+    }
+}
+
+fn restore_bullet(round_counter: Res<RoundCounter>, mut query: Query<&mut Bullets, With<Player>>) {
+    if round_counter.0 > 2 && round_counter.0 % 2 == 0 {
+        for mut bullets in &mut query {
+            bullets.n += 1;
+            println!("1 bullet acquired!");
+        }
+    }
+}
+
+fn increase_round_counter(mut round_counter: ResMut<RoundCounter>, mut game_state: ResMut<GameState>) {
+    round_counter.0 += 1;
+    game_state.0 = GameStates::Loading;
+}
+
 
 // Helpers
 // ================================================================
