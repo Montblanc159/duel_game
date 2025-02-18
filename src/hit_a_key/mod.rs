@@ -21,46 +21,55 @@ const N_FACETED_DICE: u8 = 100;
 // ================================================================
 
 #[derive(Component)]
-pub struct Player {
+struct Player {
     n: u8,
 }
 
 #[derive(Component)]
-pub struct Health {
+struct Health {
     value: u8,
 }
 
 #[derive(Component)]
-pub struct Luck {
+struct Luck {
     n: u8,
 }
 
 #[derive(Component)]
-pub struct Marksmanship {
+struct Marksmanship {
     n: u8,
 }
 
 #[derive(Component)]
-pub struct Dodges {
+struct Dodges {
     n: u8,
 }
 
 #[derive(Component)]
-pub struct Bullets {
+struct Bullets {
     n: u8,
 }
 
 #[derive(Component)]
-pub struct PlayerState(PlayerStates);
+struct PlayerState(PlayerStates);
 
 #[derive(Component)]
-pub struct KeyAssignment([KeyCode; N_KEYS_PER_PLAYER]);
+struct KeyAssignment([KeyCode; N_KEYS_PER_PLAYER]);
+
+// Events
+// ================================================================
+
+#[derive(Event)]
+struct EndGameEvent {
+    player: Option<u8>,
+    state: EndGames
+}
 
 // Enums
 // ================================================================
 
-#[derive(Debug, Clone, Copy)]
-pub enum PlayerStates {
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum PlayerStates {
     Idle,
     Attacking,
     NotAttacking,
@@ -69,22 +78,34 @@ pub enum PlayerStates {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum GameStates {
-    Menu,
-    Loading,
-    // Paused,
+enum EndGames {
+    Tie,
+    Winner,
+}
+
+// States
+// ================================================================
+
+#[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum PlayStates {
+    Preparing,
     Betting,
     Fighting,
-    RoundingUp
+    RoundingUp,
+    Finished
 }
+
+// #[derive(States, Debug, Clone, PartialEq, Eq, Hash)]
+// enum GameStates {
+//     Playing,
+//     Menu,
+//     Paused
+// }
 
 // Resources
 // ================================================================
 #[derive(Resource)]
-struct GameState(GameStates);
-
-#[derive(Resource)]
-struct GameStateTimer(Timer);
+struct PlayStateTimer(Timer);
 
 #[derive(Resource)]
 struct RoundCounter(u8);
@@ -93,40 +114,50 @@ struct RoundCounter(u8);
 // Game
 // ================================================================
 
+// DOING:
+// - refactoring winning/tie mechanics
+
 // TODO:
 // - add buffes
+// - add state
 // - refactor with events
 // - Graphics & anims !!
 
 impl Plugin for HitAKeyPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(GameState(GameStates::Betting));
-        app.insert_resource(GameStateTimer(Timer::from_seconds(8.0, TimerMode::Once)));
+        app.insert_state(PlayStates::Betting);
+        app.insert_resource(PlayStateTimer(Timer::from_seconds(8.0, TimerMode::Once)));
         app.insert_resource(RoundCounter(1));
+        app.add_event::<EndGameEvent>();
         app.add_systems(Startup, setup);
         app.add_systems(Update, (
-            set_game_state,
-            set_player_state.run_if(game_state_is_betting),
-            (decrease_health, next_phase).chain().run_if(game_state_is_fighting),
-            print_stats.run_if(game_state_is_rounding_up),
+            listen_endgames,
+            set_timed_play_state,
+            set_player_state.run_if(in_state(PlayStates::Betting)),
             (
-                check_if_dead.run_if(game_state_is_rounding_up),
-                check_if_out_of_ammo.run_if(game_state_is_rounding_up),
-                restore_bullet.run_if(game_state_is_rounding_up),
-                restore_dodge.run_if(game_state_is_rounding_up),
-                increase_round_counter.run_if(game_state_is_rounding_up),
+                display_play_state,
+                decrease_health,
+                (decrease_bullets, decrease_dodges),
+                reset_game_timer,
+                next_play_state
+            ).chain().run_if(in_state(PlayStates::Fighting)),
+            (
+                (
+                    display_play_state,
+                    print_stats,
+                    check_if_dead,
+                ).chain().run_if(in_state(PlayStates::RoundingUp)),
+                check_if_out_of_ammo.run_if(in_state(PlayStates::RoundingUp)),
+                (
+                    prepare_player_for_next_round,
+                    restore_bullet,
+                    restore_dodge,
+                    increase_round_counter,
+                    reset_game_timer,
+                    next_play_state
+                ).chain().run_if(in_state(PlayStates::RoundingUp))
             ).chain()
         ).chain());
-    }
-}
-
-fn set_game_state(mut game_state: ResMut<GameState>, time: Res<Time>, mut game_state_timer: ResMut<GameStateTimer> ) {
-    game_state_timer.0.tick(time.delta());
-
-    if game_state_timer.0.just_finished() {
-        game_state.0 = game_state_transitions(game_state.0);
-        println!("Game state: {:?}", game_state.0);
-        game_state_timer.0.reset()
     }
 }
 
@@ -167,6 +198,47 @@ fn setup(
         MeshMaterial2d(materials.add(Color::srgb(0., 0., 255.))),
         Transform::from_xyz(-250., 0.0, 0.0),
     ));
+}
+
+fn set_timed_play_state(play_state: Res<State<PlayStates>>, mut next_play_state: ResMut<NextState<PlayStates>>, time: Res<Time>, mut play_state_timer: ResMut<PlayStateTimer>) {
+    play_state_timer.0.tick(time.delta());
+
+    if play_state_timer.0.just_finished() {
+        next_play_state.set(play_state_transitions(*play_state.get()));
+        play_state_timer.0.reset()
+    }
+}
+
+fn next_play_state(
+    play_state: Res<State<PlayStates>>,
+    mut next_play_state: ResMut<NextState<PlayStates>>,
+) {
+    next_play_state.set(play_state_transitions(*play_state.get()));
+}
+
+fn display_play_state(play_state: Res<State<PlayStates>>) {
+    println!("============");
+    println!("Game state: {:?}", play_state.get());
+    println!("============");
+}
+
+fn reset_game_timer(mut play_state_timer: ResMut<PlayStateTimer>) {
+    play_state_timer.0.reset()
+}
+
+
+fn listen_endgames(
+    mut ev_endgame: EventReader<EndGameEvent>,
+    mut next_play_state: ResMut<NextState<PlayStates>>
+) {
+    for ev in ev_endgame.read() {
+        next_play_state.set(PlayStates::Finished);
+
+        match ev.state {
+            EndGames::Tie => println!("It's a tie!"),
+            EndGames::Winner => println!("Player {} won!", ev.player.unwrap()),
+        }
+    }
 }
 
 // Betting
@@ -275,24 +347,18 @@ fn decrease_health(
     }
 }
 
-fn next_phase(
-    mut game_state_timer: ResMut<GameStateTimer>,
-    mut game_state: ResMut<GameState>,
-    mut query: Query<(&mut PlayerState, &mut Dodges, &mut Bullets), With<Player>>
-) {
-    for (mut player_state, mut dodges, mut bullets) in  &mut query {
-        match player_state.0 {
-            PlayerStates::Dodging => dodges.n -= 1,
-            PlayerStates::Attacking => bullets.n -= 1,
-            _ => {}
-        }
-        player_state.0 = PlayerStates::Idle
+fn decrease_dodges(mut query: Query<(&PlayerState, &mut Dodges), With<Player>>) {
+    for (player_state, mut dodges) in &mut query {
+        if player_state.0 == PlayerStates::Dodging { dodges.n -= 1 }
     }
-
-    game_state.0 = game_state_transitions(game_state.0);
-    println!("Game state: {:?}", game_state.0);
-    game_state_timer.0.reset()
 }
+
+fn decrease_bullets(mut query: Query<(&PlayerState, &mut Bullets), With<Player>>) {
+    for (player_state, mut bullets) in &mut query {
+        if player_state.0 == PlayerStates::Attacking { bullets.n -= 1 }
+    }
+}
+
 
 // Rounding up
 // ----------------------------------------------------------------
@@ -303,8 +369,13 @@ fn print_stats(query: Query<(&Player, &Bullets, &Dodges, &Health)>) {
     }
 }
 
+fn prepare_player_for_next_round(mut query: Query<&mut PlayerState, With<Player>>) {
+    for mut player_state in  &mut query {
+        player_state.0 = PlayerStates::Idle
+    }
+}
 
-fn check_if_dead(mut game_state: ResMut<GameState>, mut query: Query<(&Health, &Player)>) {
+fn check_if_dead(mut ev_endgame: EventWriter<EndGameEvent>, mut query: Query<(&Health, &Player)>) {
     let mut dead= [false, false];
 
     for (health, player) in &mut query {
@@ -316,24 +387,24 @@ fn check_if_dead(mut game_state: ResMut<GameState>, mut query: Query<(&Health, &
 
     match dead {
         [true, true] => {
-            println!("Both players shot themselves to death. It's a tie!");
-            game_state.0 = GameStates::Menu;
+            println!("Both players shot themselves to death.");
+            ev_endgame.send(EndGameEvent { player: None, state: EndGames::Tie });
         },
         [true, false] => {
-            println!("Player 1 is dead. Player 2 wins!");
-            game_state.0 = GameStates::Menu;
+            println!("Player 1 is dead.");
+            ev_endgame.send(EndGameEvent { player: Some(2), state: EndGames::Winner });
         },
         [false, true] => {
-            println!("Player 2 is dead. Player 1 wins!");
-            game_state.0 = GameStates::Menu;
+            println!("Player 2 is dead.");
+            ev_endgame.send(EndGameEvent { player: Some(1), state: EndGames::Winner });
         },
         [false, false] => {
-            println!("Both players still alive. Prepare for next round!");
+            println!("Both players still alive.");
         }
     }
 }
 
-fn check_if_out_of_ammo(mut game_state: ResMut<GameState>, mut query: Query<(&Bullets, &Player)>) {
+fn check_if_out_of_ammo(mut ev_endgame: EventWriter<EndGameEvent>, mut query: Query<(&Bullets, &Player)>) {
     let mut out_of_ammo= [false, false];
 
     for (bullets, player) in &mut query {
@@ -344,13 +415,13 @@ fn check_if_out_of_ammo(mut game_state: ResMut<GameState>, mut query: Query<(&Bu
     }
 
     if out_of_ammo.iter().all(|&x| x == true) {
-        println!("Both players are out of ammo. It's a tie!");
-        game_state.0 = GameStates::Menu;
+        ev_endgame.send(EndGameEvent { player: None, state: EndGames::Tie });
+        println!("Both players are out of ammo.");
     }
 }
 
 fn restore_dodge(round_counter: Res<RoundCounter>, mut query: Query<&mut Dodges, With<Player>>) {
-    if round_counter.0 > 2 && round_counter.0 % 2 == 0 {
+    if round_counter.0 % 2 == 0 {
         for mut dodges in &mut query {
             dodges.n += 1;
             println!("1 dodge acquired!");
@@ -359,7 +430,7 @@ fn restore_dodge(round_counter: Res<RoundCounter>, mut query: Query<&mut Dodges,
 }
 
 fn restore_bullet(round_counter: Res<RoundCounter>, mut query: Query<&mut Bullets, With<Player>>) {
-    if round_counter.0 > 2 && round_counter.0 % 2 == 0 {
+    if round_counter.0 % 2 == 0 {
         for mut bullets in &mut query {
             bullets.n += 1;
             println!("1 bullet acquired!");
@@ -367,40 +438,27 @@ fn restore_bullet(round_counter: Res<RoundCounter>, mut query: Query<&mut Bullet
     }
 }
 
-fn increase_round_counter(mut round_counter: ResMut<RoundCounter>, mut game_state: ResMut<GameState>) {
+fn increase_round_counter(mut round_counter: ResMut<RoundCounter>) {
     round_counter.0 += 1;
-    game_state.0 = GameStates::Loading;
 }
 
 
 // Helpers
 // ================================================================
 
-fn game_state_transitions(game_state: GameStates) -> GameStates {
-    match game_state {
-        GameStates::Betting => GameStates::Fighting,
-        GameStates::Fighting => GameStates::RoundingUp,
-        GameStates::RoundingUp => GameStates::Loading,
-        GameStates::Loading => GameStates::Betting,
-        _ => game_state
+fn play_state_transitions(play_state: PlayStates) -> PlayStates {
+    match play_state {
+        PlayStates::Preparing => PlayStates::Betting,
+        PlayStates::Betting => PlayStates::Fighting,
+        PlayStates::Fighting => PlayStates::RoundingUp,
+        PlayStates::RoundingUp => PlayStates::Preparing,
+        _ => play_state
     }
 }
 
-fn game_state_is_betting(game_state: Res<GameState>) -> bool {
-    game_state.0 == GameStates::Betting
-}
-
-fn game_state_is_rounding_up(game_state: Res<GameState>) -> bool {
-    game_state.0 == GameStates::RoundingUp
-}
-
-fn game_state_is_fighting(game_state: Res<GameState>) -> bool {
-    game_state.0 == GameStates::Fighting
-}
-
 fn key_to_player_state(
-key_assignments: &[KeyCode; N_KEYS_PER_PLAYER],
-key: &KeyCode,
+    key_assignments: &[KeyCode; N_KEYS_PER_PLAYER],
+    key: &KeyCode,
 ) -> Option<PlayerStates> {
     if *key == key_assignments[0] {
         Some(PlayerStates::Attacking)
