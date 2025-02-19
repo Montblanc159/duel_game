@@ -56,6 +56,9 @@ struct PlayerState(PlayerStates);
 #[derive(Component)]
 struct KeyAssignment([KeyCode; N_KEYS_PER_PLAYER]);
 
+#[derive(Component)]
+struct PlayStateText;
+
 // Events
 // ================================================================
 
@@ -118,8 +121,7 @@ struct RoundCounter(u8);
 
 // TODO:
 // - add buffes
-// - add state
-// - refactor with events
+// - timer only for betting and preparing, use key for rounding up
 // - Graphics & anims !!
 
 impl Plugin for HitAKeyPlugin {
@@ -128,11 +130,12 @@ impl Plugin for HitAKeyPlugin {
         app.insert_resource(PlayStateTimer(Timer::from_seconds(8.0, TimerMode::Once)));
         app.insert_resource(RoundCounter(1));
         app.add_event::<EndGameEvent>();
-        app.add_systems(Startup, setup);
+        app.add_systems(Startup, ((spawn_camera, spawn_players), spawn_ui).chain());
         app.add_systems(
             Update,
             (
                 listen_endgames,
+                state_text_update,
                 set_timed_play_state,
                 set_player_state.run_if(in_state(PlayStates::Betting)),
                 (
@@ -170,13 +173,15 @@ impl Plugin for HitAKeyPlugin {
 // Systems
 // ================================================================
 
-fn setup(
+fn spawn_camera(mut commands: Commands) {
+    commands.spawn((Camera2d, IsDefaultUiCamera));
+}
+
+fn spawn_players(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    commands.spawn(Camera2d);
-
     commands.spawn((
         Player { n: 1 },
         Health { value: 3 },
@@ -208,6 +213,44 @@ fn setup(
         MeshMaterial2d(materials.add(Color::srgb(0., 0., 255.))),
         Transform::from_xyz(-250., 0.0, 0.0),
     ));
+}
+
+fn spawn_ui(mut commands: Commands) {
+    commands
+        .spawn((
+            // Create a Text with multiple child spans.
+            Text::new("Phase: "),
+            TextFont {
+                // This font is loaded and will be used instead of the default font.
+                font_size: 42.0,
+                ..default()
+            },
+        ))
+        .with_child((
+            TextSpan::default(),
+            TextFont {
+                font_size: 50.,
+                ..default()
+            },
+            TextColor(Color::WHITE),
+            TextLayout::new_with_justify(JustifyText::Center),
+            // Node {
+            //     position_type: PositionType::Absolute,
+            //     bottom: Val::Px(5.0),
+            //     right: Val::Px(5.0),
+            //     ..default()
+            // },
+            PlayStateText,
+        ));
+}
+
+fn state_text_update(
+    play_state: Res<State<PlayStates>>,
+    mut query: Query<&mut TextSpan, With<PlayStateText>>,
+) {
+    for mut span in &mut query {
+        **span = format!("{:?}", play_state.get());
+    }
 }
 
 fn set_timed_play_state(
@@ -307,14 +350,14 @@ fn decrease_health(
                     println!("Player 1 shot!");
                     health_0.value -= 1;
                 } else {
-                    println!("Player 2 misses!");
+                    println!("Player 1 missed!");
                 }
 
                 if roll_the_dice(marksmanship_0.n) > roll_the_dice(luck_1.n) {
                     println!("Player 2 shot!");
                     health_1.value -= 1;
                 } else {
-                    println!("Player 1 misses!");
+                    println!("Player 2 missed!");
                 }
             }
             [PlayerStates::Attacking, PlayerStates::Idle | PlayerStates::NotAttacking | PlayerStates::NotDodging] => {
@@ -322,7 +365,7 @@ fn decrease_health(
                     println!("Player 2 shot!");
                     health_1.value -= 1;
                 } else {
-                    println!("Player 1 misses!");
+                    println!("Player 2 missed!");
                 }
             }
             [PlayerStates::Idle | PlayerStates::NotAttacking | PlayerStates::NotDodging, PlayerStates::Attacking] => {
@@ -330,18 +373,17 @@ fn decrease_health(
                     println!("Player 1 shot!");
                     health_0.value -= 1;
                 } else {
-                    println!("Player 2 misses!");
+                    println!("Player 1 missed!");
                 }
             }
             _ => {
                 println!("Nothing happened !")
-            }
-            // [PlayerStates::Attacking, PlayerStates::Dodging] => {},
-            // [PlayerStates::Dodging, PlayerStates::Attacking] => {},
-            // [PlayerStates::Dodging, PlayerStates::Idle] => {},
-            // [PlayerStates::Dodging, PlayerStates::Dodging] => {},
-            // [PlayerStates::Idle, PlayerStates::Dodging] => {},
-            // [PlayerStates::Idle, PlayerStates::Idle] => {},
+            } // [PlayerStates::Attacking, PlayerStates::Dodging] => {},
+              // [PlayerStates::Dodging, PlayerStates::Attacking] => {},
+              // [PlayerStates::Dodging, PlayerStates::Idle] => {},
+              // [PlayerStates::Dodging, PlayerStates::Dodging] => {},
+              // [PlayerStates::Idle, PlayerStates::Dodging] => {},
+              // [PlayerStates::Idle, PlayerStates::Idle] => {},
         }
     }
 }
