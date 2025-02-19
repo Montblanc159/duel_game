@@ -50,14 +50,21 @@ struct Bullets {
     n: u8,
 }
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 struct PlayerState(PlayerStates);
 
 #[derive(Component)]
 struct KeyAssignment([KeyCode; N_KEYS_PER_PLAYER]);
 
+// UI components
+
 #[derive(Component)]
 struct PlayStateText;
+
+#[derive(Component)]
+struct PlayerStateText {
+    n: u8,
+}
 
 // Events
 // ================================================================
@@ -67,6 +74,9 @@ struct EndGameEvent {
     player: Option<u8>,
     state: EndGames,
 }
+
+#[derive(Event)]
+struct PlayerStateChangeEvent;
 
 // Enums
 // ================================================================
@@ -122,6 +132,12 @@ struct RoundCounter(u8);
 // TODO:
 // - add buffes
 // - timer only for betting and preparing, use key for rounding up
+// - add max turns
+// - UI
+//      - add health
+//      - add bullet/dodge count
+//      - missed/shot indicator
+//      - turn count
 // - Graphics & anims !!
 
 impl Plugin for HitAKeyPlugin {
@@ -130,11 +146,20 @@ impl Plugin for HitAKeyPlugin {
         app.insert_resource(PlayStateTimer(Timer::from_seconds(8.0, TimerMode::Once)));
         app.insert_resource(RoundCounter(1));
         app.add_event::<EndGameEvent>();
-        app.add_systems(Startup, ((spawn_camera, spawn_players), spawn_ui).chain());
+        app.add_event::<PlayerStateChangeEvent>();
+        app.add_systems(
+            Startup,
+            (
+                (spawn_camera, spawn_players),
+                (spawn_ui, spawn_player_state_text),
+            )
+                .chain(),
+        );
         app.add_systems(
             Update,
             (
                 listen_endgames,
+                player_state_text_update,
                 state_text_update,
                 set_timed_play_state,
                 set_player_state.run_if(in_state(PlayStates::Betting)),
@@ -195,7 +220,7 @@ fn spawn_players(
         PlayerState(PlayerStates::Idle),
         Mesh2d(meshes.add(Circle::new(50.0))),
         MeshMaterial2d(materials.add(Color::srgb(255., 0., 0.))),
-        Transform::from_xyz(250., 0.0, 0.0),
+        Transform::from_xyz(-250., 0.0, 0.0),
     ));
 
     commands.spawn((
@@ -211,45 +236,91 @@ fn spawn_players(
         PlayerState(PlayerStates::Idle),
         Mesh2d(meshes.add(Circle::new(50.0))),
         MeshMaterial2d(materials.add(Color::srgb(0., 0., 255.))),
-        Transform::from_xyz(-250., 0.0, 0.0),
+        Transform::from_xyz(250., 0.0, 0.0),
     ));
 }
 
-fn spawn_ui(mut commands: Commands) {
-    commands
-        .spawn((
-            // Create a Text with multiple child spans.
-            Text::new("Phase: "),
-            TextFont {
-                // This font is loaded and will be used instead of the default font.
-                font_size: 42.0,
-                ..default()
-            },
-        ))
-        .with_child((
-            TextSpan::default(),
-            TextFont {
-                font_size: 50.,
-                ..default()
-            },
-            TextColor(Color::WHITE),
-            TextLayout::new_with_justify(JustifyText::Center),
-            // Node {
-            //     position_type: PositionType::Absolute,
-            //     bottom: Val::Px(5.0),
-            //     right: Val::Px(5.0),
-            //     ..default()
-            // },
-            PlayStateText,
-        ));
+fn spawn_ui(mut commands: Commands, query: Query<&Window>) {
+    let window = query.single();
+    let dimensions = [250., 50.];
+
+    commands.spawn((
+        Node {
+            width: Val::Px(dimensions[0]),
+            height: Val::Px(dimensions[1]),
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(25. - (dimensions[1] / 2.)),
+            left: Val::Px(window.width() / 2. - (dimensions[0] / 2.)),
+            ..default()
+        },
+        Text::default(),
+        TextFont {
+            font_size: 30.,
+            ..default()
+        },
+        TextColor(Color::WHITE),
+        TextLayout::new_with_justify(JustifyText::Center),
+        PlayStateText,
+    ));
 }
 
 fn state_text_update(
     play_state: Res<State<PlayStates>>,
-    mut query: Query<&mut TextSpan, With<PlayStateText>>,
+    mut query: Query<&mut Text, With<PlayStateText>>,
 ) {
-    for mut span in &mut query {
-        **span = format!("{:?}", play_state.get());
+    for mut text in &mut query {
+        **text = format!("{:?}", play_state.get());
+    }
+}
+
+fn spawn_player_state_text(
+    mut commands: Commands,
+    window_query: Query<&Window>,
+    query: Query<(&Transform, &PlayerState, &Player), With<Player>>,
+) {
+    let window = window_query.single();
+
+    for (transform, player_state, player) in &query {
+        let dimensions = [250., 125.];
+
+        commands.spawn((
+            Node {
+                width: Val::Px(dimensions[0]),
+                height: Val::Px(dimensions[1]),
+                position_type: PositionType::Absolute,
+                bottom: Val::Px(
+                    transform.translation.y + window.height() / 2. - (dimensions[1] / 2.) - 125.,
+                ),
+                left: Val::Px(transform.translation.x + window.width() / 2. - (dimensions[0] / 2.)),
+                align_content: AlignContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            Text::new(format!("{:?}", player_state)),
+            TextFont {
+                font_size: 10.,
+                ..default()
+            },
+            TextColor(Color::WHITE),
+            TextLayout::new_with_justify(JustifyText::Center),
+            PlayerStateText { n: player.n },
+        ));
+    }
+}
+
+fn player_state_text_update(
+    mut ev_player_state: EventReader<PlayerStateChangeEvent>,
+    mut query_ui: Query<(&mut Text, &PlayerStateText), With<PlayerStateText>>,
+    query_state: Query<(&PlayerState, &Player), With<Player>>,
+) {
+    for _ev in ev_player_state.read() {
+        for (mut text, player_state_text) in &mut query_ui {
+            for (player_state, player) in &query_state {
+                if player_state_text.n == player.n {
+                    **text = format!("{:?}", player_state);
+                }
+            }
+        }
     }
 }
 
@@ -303,12 +374,15 @@ fn listen_endgames(
 
 fn set_player_state(
     mut query: Query<(&KeyAssignment, &mut PlayerState, &Player, &Dodges, &Bullets)>,
+    mut ev_change_player_state: EventWriter<PlayerStateChangeEvent>,
     keys: Res<ButtonInput<KeyCode>>,
 ) {
     for key in keys.get_pressed() {
         for (key_assignements, mut player_state, player, dodges, bullets) in &mut query {
             let requested_state =
                 key_to_player_state(&key_assignements.0, key).unwrap_or(player_state.0);
+
+            ev_change_player_state.send(PlayerStateChangeEvent);
 
             match requested_state {
                 PlayerStates::Attacking => {
@@ -416,9 +490,13 @@ fn print_stats(query: Query<(&Player, &Bullets, &Dodges, &Health)>) {
     }
 }
 
-fn prepare_player_for_next_round(mut query: Query<&mut PlayerState, With<Player>>) {
+fn prepare_player_for_next_round(
+    mut query: Query<&mut PlayerState, With<Player>>,
+    mut ev_change_player_state: EventWriter<PlayerStateChangeEvent>,
+) {
     for mut player_state in &mut query {
-        player_state.0 = PlayerStates::Idle
+        player_state.0 = PlayerStates::Idle;
+        ev_change_player_state.send(PlayerStateChangeEvent);
     }
 }
 
