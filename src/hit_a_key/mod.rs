@@ -16,6 +16,7 @@ const PLAYER_TWO_KEYS: [KeyCode; N_KEYS_PER_PLAYER] = PLAYER_KEY_ASSIGNMENTS[1];
 const N_BULLETS: u8 = 3;
 const N_DODGES: u8 = 3;
 const N_FACETED_DICE: u8 = 100;
+const N_MAX_ROUND: u8 = 5;
 
 // Components
 // ================================================================
@@ -62,10 +63,27 @@ struct KeyAssignment([KeyCode; N_KEYS_PER_PLAYER]);
 struct PlayStateText;
 
 #[derive(Component)]
+struct RoundNumberText;
+
+#[derive(Component)]
 struct PlayerStateText {
     n: u8,
 }
 
+#[derive(Component)]
+struct HealthText {
+    n: u8,
+}
+
+#[derive(Component)]
+struct BulletText {
+    n: u8,
+}
+
+#[derive(Component)]
+struct DodgeText {
+    n: u8,
+}
 // Events
 // ================================================================
 
@@ -131,14 +149,17 @@ struct RoundCounter(u8);
 
 // TODO:
 // - add buffes
+// - refactor with sytem sets
 // - timer only for betting and preparing, use key for rounding up
-// - add max turns
+// - restart mechanism
+// - menu
 // - UI
-//      - add health
-//      - add bullet/dodge count
 //      - missed/shot indicator
-//      - turn count
+//      - last round indicator
+//      - winner/loser screen
+//      - timers
 // - Graphics & anims !!
+// - Audio
 
 impl Plugin for HitAKeyPlugin {
     fn build(&self, app: &mut App) {
@@ -151,7 +172,14 @@ impl Plugin for HitAKeyPlugin {
             Startup,
             (
                 (spawn_camera, spawn_players),
-                (spawn_ui, spawn_player_state_text),
+                (
+                    spawn_play_state_text,
+                    spawn_player_state_text,
+                    spawn_round_number_text,
+                    spawn_health_text,
+                    spawn_bullet_text,
+                    spawn_dodge_text,
+                ),
             )
                 .chain(),
         );
@@ -159,8 +187,22 @@ impl Plugin for HitAKeyPlugin {
             Update,
             (
                 listen_endgames,
+                (
+                    prepare_player_for_next_round,
+                    restore_bullet,
+                    restore_dodge,
+                    increase_round_counter,
+                    reset_game_timer,
+                    next_play_state,
+                )
+                    .chain()
+                    .run_if(in_state(PlayStates::RoundingUp)),
                 player_state_text_update,
-                state_text_update,
+                round_number_text_update,
+                play_state_text_update,
+                health_text_update,
+                bullet_text_update,
+                dodge_text_update,
                 set_timed_play_state,
                 set_player_state.run_if(in_state(PlayStates::Betting)),
                 (
@@ -176,17 +218,8 @@ impl Plugin for HitAKeyPlugin {
                     (display_play_state, print_stats, check_if_dead)
                         .chain()
                         .run_if(in_state(PlayStates::RoundingUp)),
+                    check_if_last_round.run_if(in_state(PlayStates::RoundingUp)),
                     check_if_out_of_ammo.run_if(in_state(PlayStates::RoundingUp)),
-                    (
-                        prepare_player_for_next_round,
-                        restore_bullet,
-                        restore_dodge,
-                        increase_round_counter,
-                        reset_game_timer,
-                        next_play_state,
-                    )
-                        .chain()
-                        .run_if(in_state(PlayStates::RoundingUp)),
                 )
                     .chain(),
             )
@@ -240,7 +273,7 @@ fn spawn_players(
     ));
 }
 
-fn spawn_ui(mut commands: Commands, query: Query<&Window>) {
+fn spawn_play_state_text(mut commands: Commands, query: Query<&Window>) {
     let window = query.single();
     let dimensions = [250., 50.];
 
@@ -264,12 +297,45 @@ fn spawn_ui(mut commands: Commands, query: Query<&Window>) {
     ));
 }
 
-fn state_text_update(
+fn play_state_text_update(
     play_state: Res<State<PlayStates>>,
     mut query: Query<&mut Text, With<PlayStateText>>,
 ) {
     for mut text in &mut query {
         **text = format!("{:?}", play_state.get());
+    }
+}
+
+fn spawn_round_number_text(mut commands: Commands, query: Query<&Window>) {
+    let window = query.single();
+    let dimensions = [250., 50.];
+
+    commands.spawn((
+        Node {
+            width: Val::Px(dimensions[0]),
+            height: Val::Px(dimensions[1]),
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(45. - (dimensions[1] / 2.)),
+            left: Val::Px(window.width() / 2. - (dimensions[0] / 2.)),
+            ..default()
+        },
+        Text::new(format!("Round 1/{}", N_MAX_ROUND)),
+        TextFont {
+            font_size: 15.,
+            ..default()
+        },
+        TextColor(Color::WHITE),
+        TextLayout::new_with_justify(JustifyText::Center),
+        RoundNumberText,
+    ));
+}
+
+fn round_number_text_update(
+    round_counter: Res<RoundCounter>,
+    mut query: Query<&mut Text, With<RoundNumberText>>,
+) {
+    for mut text in &mut query {
+        **text = format!("Round {}/{}", round_counter.0, N_MAX_ROUND);
     }
 }
 
@@ -279,10 +345,9 @@ fn spawn_player_state_text(
     query: Query<(&Transform, &PlayerState, &Player), With<Player>>,
 ) {
     let window = window_query.single();
+    let dimensions = [250., 125.];
 
     for (transform, player_state, player) in &query {
-        let dimensions = [250., 125.];
-
         commands.spawn((
             Node {
                 width: Val::Px(dimensions[0]),
@@ -319,6 +384,162 @@ fn player_state_text_update(
                 if player_state_text.n == player.n {
                     **text = format!("{:?}", player_state);
                 }
+            }
+        }
+    }
+}
+
+fn spawn_health_text(
+    mut commands: Commands,
+    window_query: Query<&Window>,
+    query: Query<&Player, With<Player>>,
+) {
+    let window = window_query.single();
+    let dimensions = [25., 200.];
+    let margin = 75.;
+
+    for player in &query {
+        let left_position = if player.n == 1 {
+            margin
+        } else {
+            window.width() - margin
+        };
+
+        commands.spawn((
+            Node {
+                width: Val::Px(dimensions[0]),
+                height: Val::Px(dimensions[1]),
+                position_type: PositionType::Absolute,
+                top: Val::Px(25.),
+                left: Val::Px(left_position - (dimensions[0] / 2.)),
+                align_content: AlignContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            Text::default(),
+            TextFont {
+                font_size: 20.,
+                ..default()
+            },
+            TextColor(Color::WHITE),
+            TextLayout::new_with_justify(JustifyText::Center),
+            HealthText { n: player.n },
+        ));
+    }
+}
+
+fn health_text_update(
+    mut query_ui: Query<(&mut Text, &HealthText), With<HealthText>>,
+    query_state: Query<(&Health, &Player), With<Player>>,
+) {
+    for (mut text, health_text) in &mut query_ui {
+        for (health, player) in &query_state {
+            if health_text.n == player.n {
+                **text = format!("{} PV", health.value);
+            }
+        }
+    }
+}
+
+fn spawn_bullet_text(
+    mut commands: Commands,
+    window_query: Query<&Window>,
+    query: Query<&Player, With<Player>>,
+) {
+    let window = window_query.single();
+    let dimensions = [25., 200.];
+    let margin = 75.;
+
+    for player in &query {
+        let left_position = if player.n == 1 {
+            margin
+        } else {
+            window.width() - margin
+        };
+
+        commands.spawn((
+            Node {
+                width: Val::Px(dimensions[0]),
+                height: Val::Px(dimensions[1]),
+                position_type: PositionType::Absolute,
+                top: Val::Px(100.),
+                left: Val::Px(left_position - (dimensions[0] / 2.)),
+                align_content: AlignContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            Text::default(),
+            TextFont {
+                font_size: 20.,
+                ..default()
+            },
+            TextColor(Color::WHITE),
+            TextLayout::new_with_justify(JustifyText::Center),
+            BulletText { n: player.n },
+        ));
+    }
+}
+
+fn bullet_text_update(
+    mut query_ui: Query<(&mut Text, &BulletText), With<BulletText>>,
+    query_state: Query<(&Bullets, &Player), With<Player>>,
+) {
+    for (mut text, bullet_text) in &mut query_ui {
+        for (bullets, player) in &query_state {
+            if bullet_text.n == player.n {
+                **text = format!("{} bullets", bullets.n);
+            }
+        }
+    }
+}
+
+fn spawn_dodge_text(
+    mut commands: Commands,
+    window_query: Query<&Window>,
+    query: Query<&Player, With<Player>>,
+) {
+    let window = window_query.single();
+    let dimensions = [25., 200.];
+    let margin = 75.;
+
+    for player in &query {
+        let left_position = if player.n == 1 {
+            margin
+        } else {
+            window.width() - margin
+        };
+
+        commands.spawn((
+            Node {
+                width: Val::Px(dimensions[0]),
+                height: Val::Px(dimensions[1]),
+                position_type: PositionType::Absolute,
+                top: Val::Px(175.),
+                left: Val::Px(left_position - (dimensions[0] / 2.)),
+                align_content: AlignContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            Text::default(),
+            TextFont {
+                font_size: 20.,
+                ..default()
+            },
+            TextColor(Color::WHITE),
+            TextLayout::new_with_justify(JustifyText::Center),
+            DodgeText { n: player.n },
+        ));
+    }
+}
+
+fn dodge_text_update(
+    mut query_ui: Query<(&mut Text, &DodgeText), With<DodgeText>>,
+    query_state: Query<(&Dodges, &Player), With<Player>>,
+) {
+    for (mut text, dodge_text) in &mut query_ui {
+        for (dodges, player) in &query_state {
+            if dodge_text.n == player.n {
+                **text = format!("{} dodges", dodges.n);
             }
         }
     }
@@ -540,23 +761,84 @@ fn check_if_dead(mut ev_endgame: EventWriter<EndGameEvent>, mut query: Query<(&H
 
 fn check_if_out_of_ammo(
     mut ev_endgame: EventWriter<EndGameEvent>,
-    mut query: Query<(&Bullets, &Player)>,
+    mut query: Query<(&Bullets, &Health, &Player)>,
 ) {
-    let mut out_of_ammo = [false, false];
+    let mut query_mut = query.iter_combinations_mut();
+    while let Some([(bullets_0, health_0, player_0), (bullets_1, health_1, player_1)]) =
+        query_mut.fetch_next()
+    {
+        let ammo = [bullets_0.n, bullets_1.n];
 
-    for (bullets, player) in &mut query {
-        if bullets.n == 0 {
-            let index: usize = (player.n - 1).into();
-            out_of_ammo[index] = true
+        if ammo.iter().all(|&x| x == 0) {
+            let winner: Option<u8>;
+
+            match health_0.value < health_1.value {
+                true => winner = Some(player_1.n),
+                false => {
+                    if health_0.value == health_1.value {
+                        winner = None;
+                    } else {
+                        winner = Some(player_0.n)
+                    }
+                }
+            }
+
+            if winner.is_some() {
+                println!("Player {} has highest score!", winner.unwrap());
+
+                ev_endgame.send(EndGameEvent {
+                    player: winner,
+                    state: EndGames::Winner,
+                });
+            } else {
+                println!("Both players have same score.");
+
+                ev_endgame.send(EndGameEvent {
+                    player: None,
+                    state: EndGames::Tie,
+                });
+            }
         }
     }
+}
 
-    if out_of_ammo.iter().all(|&x| x == true) {
-        ev_endgame.send(EndGameEvent {
-            player: None,
-            state: EndGames::Tie,
-        });
-        println!("Both players are out of ammo.");
+fn check_if_last_round(
+    mut ev_endgame: EventWriter<EndGameEvent>,
+    mut query: Query<(&Health, &Player)>,
+    round: Res<RoundCounter>,
+) {
+    if round.0 == N_MAX_ROUND {
+        let mut winner: Option<u8>;
+
+        let mut query_mut = query.iter_combinations_mut();
+        while let Some([(health_0, player_0), (health_1, player_1)]) = query_mut.fetch_next() {
+            match health_0.value < health_1.value {
+                true => winner = Some(player_1.n),
+                false => {
+                    if health_0.value == health_1.value {
+                        winner = None;
+                    } else {
+                        winner = Some(player_0.n)
+                    }
+                }
+            }
+
+            if winner.is_some() {
+                println!("Player {} has highest score!", winner.unwrap());
+
+                ev_endgame.send(EndGameEvent {
+                    player: winner,
+                    state: EndGames::Winner,
+                });
+            } else {
+                println!("Both players have same score.");
+
+                ev_endgame.send(EndGameEvent {
+                    player: None,
+                    state: EndGames::Tie,
+                });
+            }
+        }
     }
 }
 
