@@ -18,6 +18,11 @@ const N_DODGES: u8 = 3;
 const N_FACETED_DICE: u8 = 100;
 const N_MAX_ROUND: u8 = 8;
 
+// UI_DEFAULTS
+// ================================================================
+
+const DEFAULT_MARGIN: f32 = 75.;
+
 // Components
 // ================================================================
 
@@ -84,6 +89,14 @@ struct BulletText {
 struct DodgeText {
     n: u8,
 }
+
+#[derive(Component)]
+struct TimerUIText;
+
+#[derive(Component)]
+
+struct PressSpacebarText;
+
 // Events
 // ================================================================
 
@@ -179,9 +192,22 @@ impl Plugin for HitAKeyPlugin {
                 .chain(),
         );
 
-        app.add_systems(OnEnter(PlayStates::Betting), reset_betting_timer);
+        app.add_systems(
+            OnEnter(PlayStates::Betting),
+            (reset_betting_timer, spawn_timer_ui).chain(),
+        );
 
-        app.add_systems(OnEnter(PlayStates::Countdown), reset_countdown_timer);
+        app.add_systems(OnExit(PlayStates::Betting), despawn_timer_ui);
+
+        app.add_systems(OnEnter(PlayStates::Preparing), spawn_press_spacebar_ui);
+        app.add_systems(OnExit(PlayStates::Preparing), despawn_press_spacebar_ui);
+
+        app.add_systems(
+            OnEnter(PlayStates::Countdown),
+            (reset_countdown_timer, spawn_timer_ui).chain(),
+        );
+
+        app.add_systems(OnExit(PlayStates::Countdown), despawn_timer_ui);
 
         app.add_systems(
             OnEnter(PlayStates::Fighting),
@@ -220,8 +246,11 @@ impl Plugin for HitAKeyPlugin {
                 bullet_text_update,
                 dodge_text_update,
                 wait_for_input_to_next_play_state.run_if(in_state(PlayStates::Preparing)),
-                countdown.run_if(in_state(PlayStates::Countdown)),
-                (betting_countdown, set_player_state).run_if(in_state(PlayStates::Betting)),
+                (countdown, update_countdown_timer_ui)
+                    .chain()
+                    .run_if(in_state(PlayStates::Countdown)),
+                (betting_countdown, set_player_state, update_betting_timer_ui)
+                    .run_if(in_state(PlayStates::Betting)),
                 next_play_state.run_if(in_state(PlayStates::Fighting)),
                 next_play_state
                     .run_if(in_state(PlayStates::RoundingUp))
@@ -233,6 +262,38 @@ impl Plugin for HitAKeyPlugin {
 
 // Systems
 // ================================================================
+
+fn spawn_timer_ui(mut commands: Commands, window_query: Query<&Window>) {
+    let window = window_query.single();
+    let dimensions = [70., 70.];
+
+    commands.spawn((
+        Node {
+            width: Val::Px(dimensions[0]),
+            height: Val::Px(dimensions[1]),
+            position_type: PositionType::Absolute,
+            top: Val::Px(DEFAULT_MARGIN - (dimensions[1] / 2.)),
+            left: Val::Px((window.width() / 2.) - (dimensions[0] / 2.)),
+            align_content: AlignContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        Text::default(),
+        TextFont {
+            font_size: 50.,
+            ..default()
+        },
+        TextColor(Color::WHITE),
+        TextLayout::new_with_justify(JustifyText::Center),
+        TimerUIText,
+    ));
+}
+
+fn despawn_timer_ui(mut commands: Commands, query: Query<Entity, With<TimerUIText>>) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn();
+    }
+}
 
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((Camera2d, IsDefaultUiCamera));
@@ -399,13 +460,12 @@ fn spawn_health_text(
 ) {
     let window = window_query.single();
     let dimensions = [25., 200.];
-    let margin = 75.;
 
     for player in &query {
         let left_position = if player.n == 1 {
-            margin
+            DEFAULT_MARGIN
         } else {
-            window.width() - margin
+            window.width() - DEFAULT_MARGIN
         };
 
         commands.spawn((
@@ -451,13 +511,12 @@ fn spawn_bullet_text(
 ) {
     let window = window_query.single();
     let dimensions = [25., 200.];
-    let margin = 75.;
 
     for player in &query {
         let left_position = if player.n == 1 {
-            margin
+            DEFAULT_MARGIN
         } else {
-            window.width() - margin
+            window.width() - DEFAULT_MARGIN
         };
 
         commands.spawn((
@@ -503,13 +562,12 @@ fn spawn_dodge_text(
 ) {
     let window = window_query.single();
     let dimensions = [25., 200.];
-    let margin = 75.;
 
     for player in &query {
         let left_position = if player.n == 1 {
-            margin
+            DEFAULT_MARGIN
         } else {
-            window.width() - margin
+            window.width() - DEFAULT_MARGIN
         };
 
         commands.spawn((
@@ -581,6 +639,42 @@ fn listen_game_overs(
     }
 }
 
+// Preparing
+// ----------------------------------------------------------------
+
+fn spawn_press_spacebar_ui(mut commands: Commands, query: Query<&Window>) {
+    let window = query.single();
+    let dimensions = [500., 50.];
+
+    commands.spawn((
+        Node {
+            width: Val::Px(dimensions[0]),
+            height: Val::Px(dimensions[1]),
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(DEFAULT_MARGIN * 2. - (dimensions[1] / 2.)),
+            left: Val::Px(window.width() / 2. - (dimensions[0] / 2.)),
+            ..default()
+        },
+        Text::new("Press space bar"),
+        TextFont {
+            font_size: 30.,
+            ..default()
+        },
+        TextColor(Color::WHITE),
+        TextLayout::new_with_justify(JustifyText::Center),
+        PressSpacebarText,
+    ));
+}
+
+fn despawn_press_spacebar_ui(
+    mut commands: Commands,
+    query: Query<Entity, With<PressSpacebarText>>,
+) {
+    for entity in &query {
+        commands.entity(entity).despawn();
+    }
+}
+
 // Countdown
 // ----------------------------------------------------------------
 
@@ -602,8 +696,19 @@ fn reset_countdown_timer(mut countdown_timer: ResMut<CountdownTimer>) {
     countdown_timer.0.reset()
 }
 
+// UI
+fn update_countdown_timer_ui(
+    betting_timer: Res<CountdownTimer>,
+    mut query: Query<&mut Text, With<TimerUIText>>,
+) {
+    for mut text in &mut query {
+        **text = format!("{}", betting_timer.0.remaining_secs().round());
+    }
+}
+
 // Betting
 // ----------------------------------------------------------------
+
 fn betting_countdown(
     play_state: Res<State<PlayStates>>,
     mut next_play_state: ResMut<NextState<PlayStates>>,
@@ -653,6 +758,16 @@ fn set_player_state(
 
             println!("Player {:?} is {:?}", player.n, player_state.0)
         }
+    }
+}
+
+// UI
+fn update_betting_timer_ui(
+    betting_timer: Res<BettingTimer>,
+    mut query: Query<&mut Text, With<TimerUIText>>,
+) {
+    for mut text in &mut query {
+        **text = format!("{}", betting_timer.0.remaining_secs().round());
     }
 }
 
@@ -878,20 +993,34 @@ fn check_if_last_round(
     }
 }
 
-fn restore_dodge(round_counter: Res<RoundCounter>, mut query: Query<&mut Dodges, With<Player>>) {
+fn restore_dodge(
+    round_counter: Res<RoundCounter>,
+    mut query: Query<(&mut Dodges, &Luck), With<Player>>,
+) {
     if round_counter.0 % 2 == 0 {
-        for mut dodges in &mut query {
-            dodges.n += 1;
-            println!("1 dodge acquired!");
+        for (mut dodges, luck) in &mut query {
+            if roll_the_dice(N_FACETED_DICE) <= luck.n {
+                dodges.n += 1;
+                println!("1 dodge acquired!");
+            } else {
+                println!("Failed to restore a dodge!");
+            }
         }
     }
 }
 
-fn restore_bullet(round_counter: Res<RoundCounter>, mut query: Query<&mut Bullets, With<Player>>) {
+fn restore_bullet(
+    round_counter: Res<RoundCounter>,
+    mut query: Query<(&mut Bullets, &Luck), With<Player>>,
+) {
     if round_counter.0 % 2 == 0 {
-        for mut bullets in &mut query {
-            bullets.n += 1;
-            println!("1 bullet acquired!");
+        for (mut bullets, luck) in &mut query {
+            if roll_the_dice(N_FACETED_DICE) <= luck.n {
+                bullets.n += 1;
+                println!("1 bullet acquired!");
+            } else {
+                println!("Failed to restore a bullet!");
+            }
         }
     }
 }
