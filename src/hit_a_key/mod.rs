@@ -144,23 +144,6 @@ struct RoundCounter(u8);
 // Game
 // ================================================================
 
-// DOING:
-// - refactoring winning/tie mechanics
-
-// TODO:
-// - add buffes
-// - refactor with sytem sets
-// - timer only for betting and preparing, use key for rounding up
-// - restart mechanism
-// - menu
-// - UI
-//      - missed/shot indicator
-//      - last round indicator
-//      - winner/loser screen
-//      - timers
-// - Graphics & anims !!
-// - Audio
-
 impl Plugin for HitAKeyPlugin {
     fn build(&self, app: &mut App) {
         app.insert_state(PlayStates::Betting);
