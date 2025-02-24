@@ -16,7 +16,7 @@ const PLAYER_TWO_KEYS: [KeyCode; N_KEYS_PER_PLAYER] = PLAYER_KEY_ASSIGNMENTS[1];
 const N_BULLETS: u8 = 3;
 const N_DODGES: u8 = 3;
 const N_FACETED_DICE: u8 = 100;
-const N_MAX_ROUND: u8 = 5;
+const N_MAX_ROUND: u8 = 8;
 
 // Components
 // ================================================================
@@ -88,7 +88,7 @@ struct DodgeText {
 // ================================================================
 
 #[derive(Event)]
-struct EndGameEvent {
+struct GameOverEvent {
     player: Option<u8>,
     state: EndGames,
 }
@@ -120,6 +120,7 @@ enum EndGames {
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum PlayStates {
     Preparing,
+    Countdown,
     Betting,
     Fighting,
     RoundingUp,
@@ -136,10 +137,16 @@ enum PlayStates {
 // Resources
 // ================================================================
 #[derive(Resource)]
-struct PlayStateTimer(Timer);
+struct BettingTimer(Timer);
+
+#[derive(Resource)]
+struct CountdownTimer(Timer);
 
 #[derive(Resource)]
 struct RoundCounter(u8);
+
+#[derive(Resource)]
+struct GameOver(bool);
 
 // Game
 // ================================================================
@@ -147,10 +154,15 @@ struct RoundCounter(u8);
 impl Plugin for HitAKeyPlugin {
     fn build(&self, app: &mut App) {
         app.insert_state(PlayStates::Betting);
-        app.insert_resource(PlayStateTimer(Timer::from_seconds(8.0, TimerMode::Once)));
+
+        app.insert_resource(BettingTimer(Timer::from_seconds(8.0, TimerMode::Once)));
+        app.insert_resource(CountdownTimer(Timer::from_seconds(3.0, TimerMode::Once)));
         app.insert_resource(RoundCounter(1));
-        app.add_event::<EndGameEvent>();
+        app.insert_resource(GameOver(false));
+
+        app.add_event::<GameOverEvent>();
         app.add_event::<PlayerStateChangeEvent>();
+
         app.add_systems(
             Startup,
             (
@@ -166,47 +178,55 @@ impl Plugin for HitAKeyPlugin {
             )
                 .chain(),
         );
+
+        app.add_systems(OnEnter(PlayStates::Betting), reset_betting_timer);
+
+        app.add_systems(OnEnter(PlayStates::Countdown), reset_countdown_timer);
+
+        app.add_systems(
+            OnEnter(PlayStates::Fighting),
+            (decrease_health, decrease_bullets, decrease_dodges),
+        );
+
+        app.add_systems(
+            OnEnter(PlayStates::RoundingUp),
+            (
+                check_if_dead,
+                check_if_last_round.run_if(is_not_game_over),
+                check_if_out_of_ammo.run_if(is_not_game_over),
+            )
+                .chain(),
+        );
+
+        app.add_systems(
+            OnExit(PlayStates::RoundingUp),
+            (
+                prepare_player_for_next_round,
+                restore_bullet,
+                restore_dodge,
+                increase_round_counter,
+            )
+                .run_if(is_not_game_over),
+        );
+
         app.add_systems(
             Update,
             (
-                listen_endgames,
-                (
-                    prepare_player_for_next_round,
-                    restore_bullet,
-                    restore_dodge,
-                    increase_round_counter,
-                    reset_game_timer,
-                    next_play_state,
-                )
-                    .chain()
-                    .run_if(in_state(PlayStates::RoundingUp)),
+                listen_game_overs,
                 player_state_text_update,
                 round_number_text_update,
                 play_state_text_update,
                 health_text_update,
                 bullet_text_update,
                 dodge_text_update,
-                set_timed_play_state,
-                set_player_state.run_if(in_state(PlayStates::Betting)),
-                (
-                    display_play_state,
-                    decrease_health,
-                    (decrease_bullets, decrease_dodges),
-                    reset_game_timer,
-                    next_play_state,
-                )
-                    .chain()
-                    .run_if(in_state(PlayStates::Fighting)),
-                (
-                    (display_play_state, print_stats, check_if_dead)
-                        .chain()
-                        .run_if(in_state(PlayStates::RoundingUp)),
-                    check_if_last_round.run_if(in_state(PlayStates::RoundingUp)),
-                    check_if_out_of_ammo.run_if(in_state(PlayStates::RoundingUp)),
-                )
-                    .chain(),
-            )
-                .chain(),
+                wait_for_input_to_next_play_state.run_if(in_state(PlayStates::Preparing)),
+                countdown.run_if(in_state(PlayStates::Countdown)),
+                (betting_countdown, set_player_state).run_if(in_state(PlayStates::Betting)),
+                next_play_state.run_if(in_state(PlayStates::Fighting)),
+                next_play_state
+                    .run_if(in_state(PlayStates::RoundingUp))
+                    .run_if(is_not_game_over),
+            ),
         );
     }
 }
@@ -528,20 +548,6 @@ fn dodge_text_update(
     }
 }
 
-fn set_timed_play_state(
-    play_state: Res<State<PlayStates>>,
-    mut next_play_state: ResMut<NextState<PlayStates>>,
-    time: Res<Time>,
-    mut play_state_timer: ResMut<PlayStateTimer>,
-) {
-    play_state_timer.0.tick(time.delta());
-
-    if play_state_timer.0.just_finished() {
-        next_play_state.set(play_state_transitions(*play_state.get()));
-        play_state_timer.0.reset()
-    }
-}
-
 fn next_play_state(
     play_state: Res<State<PlayStates>>,
     mut next_play_state: ResMut<NextState<PlayStates>>,
@@ -549,21 +555,23 @@ fn next_play_state(
     next_play_state.set(play_state_transitions(*play_state.get()));
 }
 
-fn display_play_state(play_state: Res<State<PlayStates>>) {
-    println!("============");
-    println!("Game state: {:?}", play_state.get());
-    println!("============");
-}
-
-fn reset_game_timer(mut play_state_timer: ResMut<PlayStateTimer>) {
-    play_state_timer.0.reset()
-}
-
-fn listen_endgames(
-    mut ev_endgame: EventReader<EndGameEvent>,
+fn wait_for_input_to_next_play_state(
+    keys: Res<ButtonInput<KeyCode>>,
+    play_state: Res<State<PlayStates>>,
     mut next_play_state: ResMut<NextState<PlayStates>>,
 ) {
-    for ev in ev_endgame.read() {
+    for key in keys.get_pressed() {
+        if *key == KeyCode::Space {
+            next_play_state.set(play_state_transitions(*play_state.get()));
+        }
+    }
+}
+
+fn listen_game_overs(
+    mut ev_game_over: EventReader<GameOverEvent>,
+    mut next_play_state: ResMut<NextState<PlayStates>>,
+) {
+    for ev in ev_game_over.read() {
         next_play_state.set(PlayStates::Finished);
 
         match ev.state {
@@ -573,8 +581,45 @@ fn listen_endgames(
     }
 }
 
+// Countdown
+// ----------------------------------------------------------------
+
+fn countdown(
+    play_state: Res<State<PlayStates>>,
+    mut next_play_state: ResMut<NextState<PlayStates>>,
+    time: Res<Time>,
+    mut countdown_timer: ResMut<CountdownTimer>,
+) {
+    countdown_timer.0.tick(time.delta());
+
+    if countdown_timer.0.just_finished() {
+        next_play_state.set(play_state_transitions(*play_state.get()));
+        countdown_timer.0.reset()
+    }
+}
+
+fn reset_countdown_timer(mut countdown_timer: ResMut<CountdownTimer>) {
+    countdown_timer.0.reset()
+}
+
 // Betting
 // ----------------------------------------------------------------
+fn betting_countdown(
+    play_state: Res<State<PlayStates>>,
+    mut next_play_state: ResMut<NextState<PlayStates>>,
+    time: Res<Time>,
+    mut betting_timer: ResMut<BettingTimer>,
+) {
+    betting_timer.0.tick(time.delta());
+
+    if betting_timer.0.just_finished() {
+        next_play_state.set(play_state_transitions(*play_state.get()));
+    }
+}
+
+fn reset_betting_timer(mut betting_timer: ResMut<BettingTimer>) {
+    betting_timer.0.reset()
+}
 
 fn set_player_state(
     mut query: Query<(&KeyAssignment, &mut PlayerState, &Player, &Dodges, &Bullets)>,
@@ -615,7 +660,7 @@ fn set_player_state(
 // ----------------------------------------------------------------
 
 fn decrease_health(
-    mut query: Query<(&mut Health, &mut PlayerState, &mut Luck, &mut Marksmanship), With<Player>>,
+    mut query: Query<(&mut Health, &PlayerState, &Luck, &Marksmanship), With<Player>>,
 ) {
     let mut query_mut = query.iter_combinations_mut();
     while let Some(
@@ -685,15 +730,6 @@ fn decrease_bullets(mut query: Query<(&PlayerState, &mut Bullets), With<Player>>
 // Rounding up
 // ----------------------------------------------------------------
 
-fn print_stats(query: Query<(&Player, &Bullets, &Dodges, &Health)>) {
-    for (player, bullets, dodges, health) in &query {
-        println!(
-            "Player {} HP: {} Bullets: {} Dodges: {}",
-            player.n, health.value, bullets.n, dodges.n
-        );
-    }
-}
-
 fn prepare_player_for_next_round(
     mut query: Query<&mut PlayerState, With<Player>>,
     mut ev_change_player_state: EventWriter<PlayerStateChangeEvent>,
@@ -704,7 +740,15 @@ fn prepare_player_for_next_round(
     }
 }
 
-fn check_if_dead(mut ev_endgame: EventWriter<EndGameEvent>, mut query: Query<(&Health, &Player)>) {
+fn is_not_game_over(game_over: Res<GameOver>) -> bool {
+    !game_over.0
+}
+
+fn check_if_dead(
+    mut ev_game_over: EventWriter<GameOverEvent>,
+    mut query: Query<(&Health, &Player)>,
+    mut game_over: ResMut<GameOver>,
+) {
     let mut dead = [false, false];
 
     for (health, player) in &mut query {
@@ -717,24 +761,27 @@ fn check_if_dead(mut ev_endgame: EventWriter<EndGameEvent>, mut query: Query<(&H
     match dead {
         [true, true] => {
             println!("Both players shot themselves to death.");
-            ev_endgame.send(EndGameEvent {
+            ev_game_over.send(GameOverEvent {
                 player: None,
                 state: EndGames::Tie,
             });
+            game_over.0 = true;
         }
         [true, false] => {
             println!("Player 1 is dead.");
-            ev_endgame.send(EndGameEvent {
+            ev_game_over.send(GameOverEvent {
                 player: Some(2),
                 state: EndGames::Winner,
             });
+            game_over.0 = true;
         }
         [false, true] => {
             println!("Player 2 is dead.");
-            ev_endgame.send(EndGameEvent {
+            ev_game_over.send(GameOverEvent {
                 player: Some(1),
                 state: EndGames::Winner,
             });
+            game_over.0 = true;
         }
         [false, false] => {
             println!("Both players still alive.");
@@ -743,8 +790,9 @@ fn check_if_dead(mut ev_endgame: EventWriter<EndGameEvent>, mut query: Query<(&H
 }
 
 fn check_if_out_of_ammo(
-    mut ev_endgame: EventWriter<EndGameEvent>,
+    mut ev_game_over: EventWriter<GameOverEvent>,
     mut query: Query<(&Bullets, &Health, &Player)>,
+    mut game_over: ResMut<GameOver>,
 ) {
     let mut query_mut = query.iter_combinations_mut();
     while let Some([(bullets_0, health_0, player_0), (bullets_1, health_1, player_1)]) =
@@ -753,6 +801,8 @@ fn check_if_out_of_ammo(
         let ammo = [bullets_0.n, bullets_1.n];
 
         if ammo.iter().all(|&x| x == 0) {
+            game_over.0 = true;
+
             let winner: Option<u8>;
 
             match health_0.value < health_1.value {
@@ -769,14 +819,14 @@ fn check_if_out_of_ammo(
             if winner.is_some() {
                 println!("Player {} has highest score!", winner.unwrap());
 
-                ev_endgame.send(EndGameEvent {
+                ev_game_over.send(GameOverEvent {
                     player: winner,
                     state: EndGames::Winner,
                 });
             } else {
                 println!("Both players have same score.");
 
-                ev_endgame.send(EndGameEvent {
+                ev_game_over.send(GameOverEvent {
                     player: None,
                     state: EndGames::Tie,
                 });
@@ -786,11 +836,14 @@ fn check_if_out_of_ammo(
 }
 
 fn check_if_last_round(
-    mut ev_endgame: EventWriter<EndGameEvent>,
+    mut ev_game_over: EventWriter<GameOverEvent>,
     mut query: Query<(&Health, &Player)>,
+    mut game_over: ResMut<GameOver>,
     round: Res<RoundCounter>,
 ) {
     if round.0 == N_MAX_ROUND {
+        game_over.0 = true;
+
         let mut winner: Option<u8>;
 
         let mut query_mut = query.iter_combinations_mut();
@@ -809,14 +862,14 @@ fn check_if_last_round(
             if winner.is_some() {
                 println!("Player {} has highest score!", winner.unwrap());
 
-                ev_endgame.send(EndGameEvent {
+                ev_game_over.send(GameOverEvent {
                     player: winner,
                     state: EndGames::Winner,
                 });
             } else {
                 println!("Both players have same score.");
 
-                ev_endgame.send(EndGameEvent {
+                ev_game_over.send(GameOverEvent {
                     player: None,
                     state: EndGames::Tie,
                 });
@@ -852,7 +905,8 @@ fn increase_round_counter(mut round_counter: ResMut<RoundCounter>) {
 
 fn play_state_transitions(play_state: PlayStates) -> PlayStates {
     match play_state {
-        PlayStates::Preparing => PlayStates::Betting,
+        PlayStates::Preparing => PlayStates::Countdown,
+        PlayStates::Countdown => PlayStates::Betting,
         PlayStates::Betting => PlayStates::Fighting,
         PlayStates::Fighting => PlayStates::RoundingUp,
         PlayStates::RoundingUp => PlayStates::Preparing,
