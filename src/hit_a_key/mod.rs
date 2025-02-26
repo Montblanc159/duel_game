@@ -1,15 +1,15 @@
 use bevy::prelude::*;
-use rand::prelude::*;
+use rand::{distr::StandardUniform, prelude::*};
 
 pub struct HitAKeyPlugin;
 
 // Settings
 // ================================================================
 
-const N_KEYS_PER_PLAYER: usize = 2;
+const N_KEYS_PER_PLAYER: usize = 3;
 const PLAYER_KEY_ASSIGNMENTS: [[KeyCode; N_KEYS_PER_PLAYER]; 2] = [
-    [KeyCode::KeyS, KeyCode::KeyD],
-    [KeyCode::KeyJ, KeyCode::KeyK],
+    [KeyCode::KeyS, KeyCode::KeyD, KeyCode::KeyF],
+    [KeyCode::KeyJ, KeyCode::KeyK, KeyCode::KeyL],
 ];
 const PLAYER_ONE_KEYS: [KeyCode; N_KEYS_PER_PLAYER] = PLAYER_KEY_ASSIGNMENTS[0];
 const PLAYER_TWO_KEYS: [KeyCode; N_KEYS_PER_PLAYER] = PLAYER_KEY_ASSIGNMENTS[1];
@@ -17,6 +17,8 @@ const N_BULLETS: u8 = 3;
 const N_DODGES: u8 = 3;
 const N_FACETED_DICE: u8 = 100;
 const N_MAX_ROUND: u8 = 8;
+const DEFAULT_LUCK: u8 = N_FACETED_DICE - (N_FACETED_DICE as f32 * 0.1) as u8;
+const DEFAULT_DAMAGE: u8 = 1;
 
 // UI_DEFAULTS
 // ================================================================
@@ -28,7 +30,7 @@ const DEFAULT_MARGIN: f32 = 75.;
 
 #[derive(Component)]
 struct Player {
-    n: u8,
+    value: u8,
 }
 
 #[derive(Component)]
@@ -38,22 +40,32 @@ struct Health {
 
 #[derive(Component)]
 struct Luck {
-    n: u8,
+    value: u8,
 }
 
 #[derive(Component)]
 struct Marksmanship {
-    n: u8,
+    value: u8,
 }
 
 #[derive(Component)]
 struct Dodges {
-    n: u8,
+    value: u8,
 }
 
 #[derive(Component)]
 struct Bullets {
-    n: u8,
+    value: u8,
+}
+
+#[derive(Component)]
+struct Damage {
+    value: u8,
+}
+
+#[derive(Component, Clone, Copy)]
+struct Buff {
+    value: Option<Buffes>,
 }
 
 #[derive(Component, Debug)]
@@ -72,22 +84,22 @@ struct RoundNumberText;
 
 #[derive(Component)]
 struct PlayerStateText {
-    n: u8,
+    value: u8,
 }
 
 #[derive(Component)]
 struct HealthText {
-    n: u8,
+    value: u8,
 }
 
 #[derive(Component)]
 struct BulletText {
-    n: u8,
+    value: u8,
 }
 
 #[derive(Component)]
 struct DodgeText {
-    n: u8,
+    value: u8,
 }
 
 #[derive(Component)]
@@ -119,12 +131,30 @@ enum PlayerStates {
     NotAttacking,
     Dodging,
     NotDodging,
+    Buffing,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum EndGames {
     Tie,
     Winner,
+}
+
+#[derive(PartialEq, Clone, Copy)]
+enum Buffes {
+    DoubleDamageBuff,
+    HealBuff,
+}
+
+impl Distribution<Buffes> for StandardUniform {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Buffes {
+        let index = rng.random_range(0..1);
+        match index {
+            0 => Buffes::DoubleDamageBuff,
+            1 => Buffes::HealBuff,
+            _ => unreachable!(),
+        }
+    }
 }
 
 // States
@@ -192,13 +222,6 @@ impl Plugin for HitAKeyPlugin {
                 .chain(),
         );
 
-        app.add_systems(
-            OnEnter(PlayStates::Betting),
-            (reset_betting_timer, spawn_timer_ui).chain(),
-        );
-
-        app.add_systems(OnExit(PlayStates::Betting), despawn_timer_ui);
-
         app.add_systems(OnEnter(PlayStates::Preparing), spawn_press_spacebar_ui);
         app.add_systems(OnExit(PlayStates::Preparing), despawn_press_spacebar_ui);
 
@@ -210,9 +233,24 @@ impl Plugin for HitAKeyPlugin {
         app.add_systems(OnExit(PlayStates::Countdown), despawn_timer_ui);
 
         app.add_systems(
+            OnEnter(PlayStates::Betting),
+            (reset_betting_timer, spawn_timer_ui).chain(),
+        );
+
+        app.add_systems(
+            OnExit(PlayStates::Betting),
+            (
+                despawn_timer_ui,
+                (add_buffes, (double_damage_buff, heal_buff)).chain(),
+            ),
+        );
+
+        app.add_systems(
             OnEnter(PlayStates::Fighting),
             (decrease_health, decrease_bullets, decrease_dodges),
         );
+
+        app.add_systems(OnExit(PlayStates::Fighting), (remove_buffes).chain());
 
         app.add_systems(
             OnEnter(PlayStates::RoundingUp),
@@ -305,14 +343,20 @@ fn spawn_players(
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     commands.spawn((
-        Player { n: 1 },
+        Player { value: 1 },
         Health { value: 3 },
         Luck {
-            n: N_FACETED_DICE - 10,
+            value: DEFAULT_LUCK,
         },
-        Marksmanship { n: N_FACETED_DICE },
-        Dodges { n: N_DODGES },
-        Bullets { n: N_BULLETS },
+        Damage {
+            value: DEFAULT_DAMAGE,
+        },
+        Marksmanship {
+            value: N_FACETED_DICE,
+        },
+        Dodges { value: N_DODGES },
+        Bullets { value: N_BULLETS },
+        Buff { value: None },
         KeyAssignment(PLAYER_ONE_KEYS),
         PlayerState(PlayerStates::Idle),
         Mesh2d(meshes.add(Circle::new(50.0))),
@@ -321,14 +365,20 @@ fn spawn_players(
     ));
 
     commands.spawn((
-        Player { n: 2 },
+        Player { value: 2 },
         Health { value: 3 },
         Luck {
-            n: N_FACETED_DICE - 10,
+            value: DEFAULT_LUCK,
         },
-        Marksmanship { n: N_FACETED_DICE },
-        Dodges { n: N_DODGES },
-        Bullets { n: N_BULLETS },
+        Damage {
+            value: DEFAULT_DAMAGE,
+        },
+        Marksmanship {
+            value: N_FACETED_DICE,
+        },
+        Dodges { value: N_DODGES },
+        Bullets { value: N_BULLETS },
+        Buff { value: None },
         KeyAssignment(PLAYER_TWO_KEYS),
         PlayerState(PlayerStates::Idle),
         Mesh2d(meshes.add(Circle::new(50.0))),
@@ -432,7 +482,9 @@ fn spawn_player_state_text(
             },
             TextColor(Color::WHITE),
             TextLayout::new_with_justify(JustifyText::Center),
-            PlayerStateText { n: player.n },
+            PlayerStateText {
+                value: player.value,
+            },
         ));
     }
 }
@@ -445,7 +497,7 @@ fn player_state_text_update(
     for _ev in ev_player_state.read() {
         for (mut text, player_state_text) in &mut query_ui {
             for (player_state, player) in &query_state {
-                if player_state_text.n == player.n {
+                if player_state_text.value == player.value {
                     **text = format!("{:?}", player_state);
                 }
             }
@@ -462,7 +514,7 @@ fn spawn_health_text(
     let dimensions = [25., 200.];
 
     for player in &query {
-        let left_position = if player.n == 1 {
+        let left_position = if player.value == 1 {
             DEFAULT_MARGIN
         } else {
             window.width() - DEFAULT_MARGIN
@@ -486,7 +538,9 @@ fn spawn_health_text(
             },
             TextColor(Color::WHITE),
             TextLayout::new_with_justify(JustifyText::Center),
-            HealthText { n: player.n },
+            HealthText {
+                value: player.value,
+            },
         ));
     }
 }
@@ -497,7 +551,7 @@ fn health_text_update(
 ) {
     for (mut text, health_text) in &mut query_ui {
         for (health, player) in &query_state {
-            if health_text.n == player.n {
+            if health_text.value == player.value {
                 **text = format!("{} PV", health.value);
             }
         }
@@ -513,7 +567,7 @@ fn spawn_bullet_text(
     let dimensions = [25., 200.];
 
     for player in &query {
-        let left_position = if player.n == 1 {
+        let left_position = if player.value == 1 {
             DEFAULT_MARGIN
         } else {
             window.width() - DEFAULT_MARGIN
@@ -537,7 +591,9 @@ fn spawn_bullet_text(
             },
             TextColor(Color::WHITE),
             TextLayout::new_with_justify(JustifyText::Center),
-            BulletText { n: player.n },
+            BulletText {
+                value: player.value,
+            },
         ));
     }
 }
@@ -548,8 +604,8 @@ fn bullet_text_update(
 ) {
     for (mut text, bullet_text) in &mut query_ui {
         for (bullets, player) in &query_state {
-            if bullet_text.n == player.n {
-                **text = format!("{} bullets", bullets.n);
+            if bullet_text.value == player.value {
+                **text = format!("{} bullets", bullets.value);
             }
         }
     }
@@ -564,7 +620,7 @@ fn spawn_dodge_text(
     let dimensions = [25., 200.];
 
     for player in &query {
-        let left_position = if player.n == 1 {
+        let left_position = if player.value == 1 {
             DEFAULT_MARGIN
         } else {
             window.width() - DEFAULT_MARGIN
@@ -588,7 +644,9 @@ fn spawn_dodge_text(
             },
             TextColor(Color::WHITE),
             TextLayout::new_with_justify(JustifyText::Center),
-            DodgeText { n: player.n },
+            DodgeText {
+                value: player.value,
+            },
         ));
     }
 }
@@ -599,8 +657,8 @@ fn dodge_text_update(
 ) {
     for (mut text, dodge_text) in &mut query_ui {
         for (dodges, player) in &query_state {
-            if dodge_text.n == player.n {
-                **text = format!("{} dodges", dodges.n);
+            if dodge_text.value == player.value {
+                **text = format!("{} dodges", dodges.value);
             }
         }
     }
@@ -740,23 +798,66 @@ fn set_player_state(
 
             match requested_state {
                 PlayerStates::Attacking => {
-                    if bullets.n > 0 {
+                    if bullets.value > 0 {
                         player_state.0 = requested_state;
                     } else {
                         player_state.0 = PlayerStates::NotAttacking;
                     }
                 }
                 PlayerStates::Dodging => {
-                    if dodges.n > 0 {
+                    if dodges.value > 0 {
                         player_state.0 = requested_state;
                     } else {
                         player_state.0 = PlayerStates::NotDodging;
                     }
                 }
-                _ => {}
+                other_player_state => player_state.0 = other_player_state,
             }
 
-            println!("Player {:?} is {:?}", player.n, player_state.0)
+            println!("Player {:?} is {:?}", player.value, player_state.0)
+        }
+    }
+}
+
+fn add_buffes(mut query: Query<(&mut Buff, &PlayerState), With<Player>>) {
+    for (mut buff, player_state) in &mut query {
+        if player_state.0 == PlayerStates::Buffing {
+            let random_buff: Buffes = rand::random();
+            buff.value = Some(random_buff);
+        }
+    }
+}
+
+fn remove_buffes(mut query: Query<&mut Buff, With<Player>>) {
+    for mut buff in &mut query {
+        buff.value = None;
+    }
+}
+
+fn double_damage_buff(mut query: Query<(&Buff, &mut Damage), With<Player>>) {
+    for (&buff, mut damage) in &mut query {
+        if let Some(buff_value) = buff.value {
+            if buff_value == Buffes::DoubleDamageBuff {
+                damage.value *= 2;
+            }
+        }
+    }
+}
+
+// fn double_damage_debuff(mut query: Query<(&Buff, &mut Damage), With<Player>>) {
+//     for (&buff, mut damage) in &mut query {
+//         if buff.value.unwrap() == Buffes::DoubleDamageBuff {
+//             damage.value /= 2;
+//         }
+//     }
+// }
+
+fn heal_buff(mut query: Query<(&Buff, &mut Health), With<Player>>) {
+    for (&buff, mut health) in &mut query {
+        if let Some(buff_value) = buff.value {
+            if buff_value == Buffes::HealBuff {
+                health.value += 1;
+            }
         }
     }
 }
@@ -775,41 +876,47 @@ fn update_betting_timer_ui(
 // ----------------------------------------------------------------
 
 fn decrease_health(
-    mut query: Query<(&mut Health, &PlayerState, &Luck, &Marksmanship), With<Player>>,
+    mut query: Query<(&mut Health, &PlayerState, &Luck, &Marksmanship, &Damage), With<Player>>,
 ) {
     let mut query_mut = query.iter_combinations_mut();
     while let Some(
-        [(mut health_0, state_0, luck_0, marksmanship_0), (mut health_1, state_1, luck_1, marksmanship_1)],
+        [(mut health_0, state_0, luck_0, marksmanship_0, damage_0), (mut health_1, state_1, luck_1, marksmanship_1, damage_1)],
     ) = query_mut.fetch_next()
     {
         match [state_0.0, state_1.0] {
             [PlayerStates::Attacking, PlayerStates::Attacking] => {
-                if roll_the_dice(marksmanship_1.n) > roll_the_dice(luck_0.n) {
+                if roll_the_dice(marksmanship_1.value) > roll_the_dice(luck_0.value) {
                     println!("Player 1 shot!");
-                    health_0.value -= 1;
+                    health_0.value = health_0.value.checked_sub(damage_1.value).unwrap_or(0);
                 } else {
                     println!("Player 1 missed!");
                 }
 
-                if roll_the_dice(marksmanship_0.n) > roll_the_dice(luck_1.n) {
+                if roll_the_dice(marksmanship_0.value) > roll_the_dice(luck_1.value) {
                     println!("Player 2 shot!");
-                    health_1.value -= 1;
+                    health_1.value = health_1.value.checked_sub(damage_0.value).unwrap_or(0);
                 } else {
                     println!("Player 2 missed!");
                 }
             }
-            [PlayerStates::Attacking, PlayerStates::Idle | PlayerStates::NotAttacking | PlayerStates::NotDodging] => {
-                if roll_the_dice(marksmanship_0.n) > roll_the_dice(luck_1.n) {
+            [PlayerStates::Attacking, PlayerStates::Idle
+            | PlayerStates::NotAttacking
+            | PlayerStates::NotDodging
+            | PlayerStates::Buffing] => {
+                if roll_the_dice(marksmanship_0.value) > roll_the_dice(luck_1.value) {
                     println!("Player 2 shot!");
-                    health_1.value -= 1;
+                    health_1.value = health_1.value.checked_sub(damage_0.value).unwrap_or(0);
                 } else {
                     println!("Player 2 missed!");
                 }
             }
-            [PlayerStates::Idle | PlayerStates::NotAttacking | PlayerStates::NotDodging, PlayerStates::Attacking] => {
-                if roll_the_dice(marksmanship_1.n) > roll_the_dice(luck_0.n) {
+            [PlayerStates::Idle
+            | PlayerStates::NotAttacking
+            | PlayerStates::NotDodging
+            | PlayerStates::Buffing, PlayerStates::Attacking] => {
+                if roll_the_dice(marksmanship_1.value) > roll_the_dice(luck_0.value) {
                     println!("Player 1 shot!");
-                    health_0.value -= 1;
+                    health_0.value = health_0.value.checked_sub(damage_1.value).unwrap_or(0);
                 } else {
                     println!("Player 1 missed!");
                 }
@@ -829,7 +936,7 @@ fn decrease_health(
 fn decrease_dodges(mut query: Query<(&PlayerState, &mut Dodges), With<Player>>) {
     for (player_state, mut dodges) in &mut query {
         if player_state.0 == PlayerStates::Dodging {
-            dodges.n -= 1
+            dodges.value -= 1
         }
     }
 }
@@ -837,7 +944,7 @@ fn decrease_dodges(mut query: Query<(&PlayerState, &mut Dodges), With<Player>>) 
 fn decrease_bullets(mut query: Query<(&PlayerState, &mut Bullets), With<Player>>) {
     for (player_state, mut bullets) in &mut query {
         if player_state.0 == PlayerStates::Attacking {
-            bullets.n -= 1
+            bullets.value -= 1
         }
     }
 }
@@ -868,7 +975,7 @@ fn check_if_dead(
 
     for (health, player) in &mut query {
         if health.value == 0 {
-            let index: usize = (player.n - 1).into();
+            let index: usize = (player.value - 1).into();
             dead[index] = true
         }
     }
@@ -913,7 +1020,7 @@ fn check_if_out_of_ammo(
     while let Some([(bullets_0, health_0, player_0), (bullets_1, health_1, player_1)]) =
         query_mut.fetch_next()
     {
-        let ammo = [bullets_0.n, bullets_1.n];
+        let ammo = [bullets_0.value, bullets_1.value];
 
         if ammo.iter().all(|&x| x == 0) {
             game_over.0 = true;
@@ -921,12 +1028,12 @@ fn check_if_out_of_ammo(
             let winner: Option<u8>;
 
             match health_0.value < health_1.value {
-                true => winner = Some(player_1.n),
+                true => winner = Some(player_1.value),
                 false => {
                     if health_0.value == health_1.value {
                         winner = None;
                     } else {
-                        winner = Some(player_0.n)
+                        winner = Some(player_0.value)
                     }
                 }
             }
@@ -964,12 +1071,12 @@ fn check_if_last_round(
         let mut query_mut = query.iter_combinations_mut();
         while let Some([(health_0, player_0), (health_1, player_1)]) = query_mut.fetch_next() {
             match health_0.value < health_1.value {
-                true => winner = Some(player_1.n),
+                true => winner = Some(player_1.value),
                 false => {
                     if health_0.value == health_1.value {
                         winner = None;
                     } else {
-                        winner = Some(player_0.n)
+                        winner = Some(player_0.value)
                     }
                 }
             }
@@ -999,8 +1106,8 @@ fn restore_dodge(
 ) {
     if round_counter.0 % 2 == 0 {
         for (mut dodges, luck) in &mut query {
-            if roll_the_dice(N_FACETED_DICE) <= luck.n {
-                dodges.n += 1;
+            if roll_the_dice(N_FACETED_DICE) <= luck.value {
+                dodges.value += 1;
                 println!("1 dodge acquired!");
             } else {
                 println!("Failed to restore a dodge!");
@@ -1015,8 +1122,8 @@ fn restore_bullet(
 ) {
     if round_counter.0 % 2 == 0 {
         for (mut bullets, luck) in &mut query {
-            if roll_the_dice(N_FACETED_DICE) <= luck.n {
-                bullets.n += 1;
+            if roll_the_dice(N_FACETED_DICE) <= luck.value {
+                bullets.value += 1;
                 println!("1 bullet acquired!");
             } else {
                 println!("Failed to restore a bullet!");
@@ -1051,6 +1158,8 @@ fn key_to_player_state(
         Some(PlayerStates::Attacking)
     } else if *key == key_assignments[1] {
         Some(PlayerStates::Dodging)
+    } else if *key == key_assignments[2] {
+        Some(PlayerStates::Buffing)
     } else {
         None
     }
