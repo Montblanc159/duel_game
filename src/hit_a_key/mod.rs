@@ -115,7 +115,7 @@ struct PressSpacebarText;
 #[derive(Event)]
 struct GameOverEvent {
     player: Option<u8>,
-    state: EndGames,
+    state: GameOvers,
 }
 
 #[derive(Event)]
@@ -135,7 +135,7 @@ enum PlayerStates {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum EndGames {
+enum GameOvers {
     Tie,
     Winner,
 }
@@ -167,7 +167,7 @@ enum PlayStates {
     Betting,
     Fighting,
     RoundingUp,
-    Finished,
+    GameOver,
 }
 
 // #[derive(States, Debug, Clone, PartialEq, Eq, Hash)]
@@ -688,11 +688,11 @@ fn listen_game_overs(
     mut next_play_state: ResMut<NextState<PlayStates>>,
 ) {
     for ev in ev_game_over.read() {
-        next_play_state.set(PlayStates::Finished);
+        next_play_state.set(PlayStates::GameOver);
 
         match ev.state {
-            EndGames::Tie => println!("It's a tie!"),
-            EndGames::Winner => println!("Player {} won!", ev.player.unwrap()),
+            GameOvers::Tie => println!("It's a tie!"),
+            GameOvers::Winner => println!("Player {} won!", ev.player.unwrap()),
         }
     }
 }
@@ -844,14 +844,6 @@ fn double_damage_buff(mut query: Query<(&Buff, &mut Damage), With<Player>>) {
     }
 }
 
-// fn double_damage_debuff(mut query: Query<(&Buff, &mut Damage), With<Player>>) {
-//     for (&buff, mut damage) in &mut query {
-//         if buff.value.unwrap() == Buffes::DoubleDamageBuff {
-//             damage.value /= 2;
-//         }
-//     }
-// }
-
 fn heal_buff(mut query: Query<(&Buff, &mut Health), With<Player>>) {
     for (&buff, mut health) in &mut query {
         if let Some(buff_value) = buff.value {
@@ -985,7 +977,7 @@ fn check_if_dead(
             println!("Both players shot themselves to death.");
             ev_game_over.send(GameOverEvent {
                 player: None,
-                state: EndGames::Tie,
+                state: GameOvers::Tie,
             });
             game_over.0 = true;
         }
@@ -993,7 +985,7 @@ fn check_if_dead(
             println!("Player 1 is dead.");
             ev_game_over.send(GameOverEvent {
                 player: Some(2),
-                state: EndGames::Winner,
+                state: GameOvers::Winner,
             });
             game_over.0 = true;
         }
@@ -1001,7 +993,7 @@ fn check_if_dead(
             println!("Player 2 is dead.");
             ev_game_over.send(GameOverEvent {
                 player: Some(1),
-                state: EndGames::Winner,
+                state: GameOvers::Winner,
             });
             game_over.0 = true;
         }
@@ -1043,14 +1035,14 @@ fn check_if_out_of_ammo(
 
                 ev_game_over.send(GameOverEvent {
                     player: winner,
-                    state: EndGames::Winner,
+                    state: GameOvers::Winner,
                 });
             } else {
                 println!("Both players have same score.");
 
                 ev_game_over.send(GameOverEvent {
                     player: None,
-                    state: EndGames::Tie,
+                    state: GameOvers::Tie,
                 });
             }
         }
@@ -1086,14 +1078,14 @@ fn check_if_last_round(
 
                 ev_game_over.send(GameOverEvent {
                     player: winner,
-                    state: EndGames::Winner,
+                    state: GameOvers::Winner,
                 });
             } else {
                 println!("Both players have same score.");
 
                 ev_game_over.send(GameOverEvent {
                     player: None,
-                    state: EndGames::Tie,
+                    state: GameOvers::Tie,
                 });
             }
         }
