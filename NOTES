@@ -1,13 +1,30 @@
 DOING:
-- add buffes !!
+- UI
+     - last round indicator
+     - bullet/dodge acquired
+     - winner/loser screen
 
 TODO:
 - refactor with sytem sets
 - restart mechanism
 - menu
-- UI
-     - missed/shot indicator
-     - last round indicator
-     - winner/loser screen
 - Graphics & anims !!
 - Audio
+
+
+-----
+
+Last round event
+
+Win/Lose event
+- despawn everything ?
+- spawn winning screen with which player won
+-
+
+Graphic ideas :
+- hand drawing depending on health (more or less tired)
+- hand receiving shot animation
+- dodge/protect sacrifices a minion ? a finger (isn't a finger the health) ?
+- regrows on winning dodge
+- shoot sacrifices ?
+- look based on buff also (add something to hand)

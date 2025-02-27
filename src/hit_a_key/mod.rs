@@ -109,6 +109,10 @@ struct TimerUIText;
 
 struct PressSpacebarText;
 
+#[derive(Component)]
+
+struct PlayerTickText;
+
 // Events
 // ================================================================
 
@@ -120,6 +124,23 @@ struct GameOverEvent {
 
 #[derive(Event)]
 struct PlayerStateChangeEvent;
+
+#[derive(Event)]
+struct DamageEvent {
+    player: u8,
+    value: u8,
+}
+
+#[derive(Event)]
+struct MissedEvent {
+    player: u8,
+}
+
+#[derive(Event)]
+struct TickPlayerEvent {
+    player: u8,
+    value: String,
+}
 
 // Enums
 // ================================================================
@@ -205,6 +226,9 @@ impl Plugin for HitAKeyPlugin {
 
         app.add_event::<GameOverEvent>();
         app.add_event::<PlayerStateChangeEvent>();
+        app.add_event::<DamageEvent>();
+        app.add_event::<MissedEvent>();
+        app.add_event::<TickPlayerEvent>();
 
         app.add_systems(
             Startup,
@@ -247,10 +271,13 @@ impl Plugin for HitAKeyPlugin {
 
         app.add_systems(
             OnEnter(PlayStates::Fighting),
-            (decrease_health, decrease_bullets, decrease_dodges),
+            (fight, decrease_bullets, decrease_dodges),
         );
 
-        app.add_systems(OnExit(PlayStates::Fighting), (remove_buffes).chain());
+        app.add_systems(
+            OnExit(PlayStates::Fighting),
+            (remove_buffes, despawn_player_tick_ui),
+        );
 
         app.add_systems(
             OnEnter(PlayStates::RoundingUp),
@@ -289,7 +316,16 @@ impl Plugin for HitAKeyPlugin {
                     .run_if(in_state(PlayStates::Countdown)),
                 (betting_countdown, set_player_state, update_betting_timer_ui)
                     .run_if(in_state(PlayStates::Betting)),
-                next_play_state.run_if(in_state(PlayStates::Fighting)),
+                (
+                    listen_damage_event,
+                    listen_missed_event,
+                    listen_spawn_player_tick_ui,
+                    animate_player_tick_text_opacity,
+                    animate_player_tick_font_size,
+                    (next_play_state).run_if(check_fighting_phase_ended),
+                )
+                    .run_if(in_state(PlayStates::Fighting))
+                    .chain(),
                 next_play_state
                     .run_if(in_state(PlayStates::RoundingUp))
                     .run_if(is_not_game_over),
@@ -785,12 +821,12 @@ fn reset_betting_timer(mut betting_timer: ResMut<BettingTimer>) {
 }
 
 fn set_player_state(
-    mut query: Query<(&KeyAssignment, &mut PlayerState, &Player, &Dodges, &Bullets)>,
+    mut query: Query<(&KeyAssignment, &mut PlayerState, &Dodges, &Bullets)>,
     mut ev_change_player_state: EventWriter<PlayerStateChangeEvent>,
     keys: Res<ButtonInput<KeyCode>>,
 ) {
     for key in keys.get_pressed() {
-        for (key_assignements, mut player_state, player, dodges, bullets) in &mut query {
+        for (key_assignements, mut player_state, dodges, bullets) in &mut query {
             let requested_state =
                 key_to_player_state(&key_assignements.0, key).unwrap_or(player_state.0);
 
@@ -813,8 +849,6 @@ fn set_player_state(
                 }
                 other_player_state => player_state.0 = other_player_state,
             }
-
-            println!("Player {:?} is {:?}", player.value, player_state.0)
         }
     }
 }
@@ -867,28 +901,38 @@ fn update_betting_timer_ui(
 // Fighting
 // ----------------------------------------------------------------
 
-fn decrease_health(
-    mut query: Query<(&mut Health, &PlayerState, &Luck, &Marksmanship, &Damage), With<Player>>,
+fn fight(
+    query: Query<(&PlayerState, &Luck, &Marksmanship, &Damage, &Player), With<Player>>,
+    mut ev_damage: EventWriter<DamageEvent>,
+    mut ev_missed: EventWriter<MissedEvent>,
 ) {
-    let mut query_mut = query.iter_combinations_mut();
+    let mut query_mut = query.iter_combinations();
     while let Some(
-        [(mut health_0, state_0, luck_0, marksmanship_0, damage_0), (mut health_1, state_1, luck_1, marksmanship_1, damage_1)],
+        [(state_0, luck_0, marksmanship_0, damage_0, player_0), (state_1, luck_1, marksmanship_1, damage_1, player_1)],
     ) = query_mut.fetch_next()
     {
         match [state_0.0, state_1.0] {
             [PlayerStates::Attacking, PlayerStates::Attacking] => {
                 if roll_the_dice(marksmanship_1.value) > roll_the_dice(luck_0.value) {
-                    println!("Player 1 shot!");
-                    health_0.value = health_0.value.checked_sub(damage_1.value).unwrap_or(0);
+                    ev_damage.send(DamageEvent {
+                        player: player_0.value,
+                        value: damage_1.value,
+                    });
                 } else {
-                    println!("Player 1 missed!");
+                    ev_missed.send(MissedEvent {
+                        player: player_0.value,
+                    });
                 }
 
                 if roll_the_dice(marksmanship_0.value) > roll_the_dice(luck_1.value) {
-                    println!("Player 2 shot!");
-                    health_1.value = health_1.value.checked_sub(damage_0.value).unwrap_or(0);
+                    ev_damage.send(DamageEvent {
+                        player: player_1.value,
+                        value: damage_0.value,
+                    });
                 } else {
-                    println!("Player 2 missed!");
+                    ev_missed.send(MissedEvent {
+                        player: player_1.value,
+                    });
                 }
             }
             [PlayerStates::Attacking, PlayerStates::Idle
@@ -896,10 +940,14 @@ fn decrease_health(
             | PlayerStates::NotDodging
             | PlayerStates::Buffing] => {
                 if roll_the_dice(marksmanship_0.value) > roll_the_dice(luck_1.value) {
-                    println!("Player 2 shot!");
-                    health_1.value = health_1.value.checked_sub(damage_0.value).unwrap_or(0);
+                    ev_damage.send(DamageEvent {
+                        player: player_1.value,
+                        value: damage_0.value,
+                    });
                 } else {
-                    println!("Player 2 missed!");
+                    ev_missed.send(MissedEvent {
+                        player: player_1.value,
+                    });
                 }
             }
             [PlayerStates::Idle
@@ -907,10 +955,14 @@ fn decrease_health(
             | PlayerStates::NotDodging
             | PlayerStates::Buffing, PlayerStates::Attacking] => {
                 if roll_the_dice(marksmanship_1.value) > roll_the_dice(luck_0.value) {
-                    println!("Player 1 shot!");
-                    health_0.value = health_0.value.checked_sub(damage_1.value).unwrap_or(0);
+                    ev_damage.send(DamageEvent {
+                        player: player_0.value,
+                        value: damage_1.value,
+                    });
                 } else {
-                    println!("Player 1 missed!");
+                    ev_missed.send(MissedEvent {
+                        player: player_0.value,
+                    });
                 }
             }
             _ => {
@@ -922,6 +974,107 @@ fn decrease_health(
               // [PlayerStates::Idle, PlayerStates::Dodging] => {},
               // [PlayerStates::Idle, PlayerStates::Idle] => {},
         }
+    }
+}
+
+fn listen_damage_event(
+    mut ev_damage: EventReader<DamageEvent>,
+    mut ev_tick_player: EventWriter<TickPlayerEvent>,
+    mut query: Query<(&mut Health, &Player), With<Player>>,
+) {
+    for ev in ev_damage.read() {
+        for (mut health, player) in &mut query {
+            if player.value == ev.player {
+                health.value = health.value.checked_sub(ev.value).unwrap_or(0);
+                ev_tick_player.send(TickPlayerEvent {
+                    player: player.value,
+                    value: format!("-{}", ev.value),
+                });
+            }
+        }
+    }
+}
+
+fn listen_missed_event(
+    mut ev_missed: EventReader<MissedEvent>,
+    mut ev_tick_player: EventWriter<TickPlayerEvent>,
+    query: Query<&Player>,
+) {
+    for ev in ev_missed.read() {
+        for player in &query {
+            if player.value == ev.player {
+                ev_tick_player.send(TickPlayerEvent {
+                    player: player.value,
+                    value: "Missed!".into(),
+                });
+            }
+        }
+    }
+}
+
+fn listen_spawn_player_tick_ui(
+    mut commands: Commands,
+    mut ev_tick_player: EventReader<TickPlayerEvent>,
+    query: Query<(&Player, &Transform), With<Player>>,
+    window_query: Query<&Window>,
+) {
+    for ev in ev_tick_player.read() {
+        let window = window_query.single();
+        let dimensions = [250., 250.];
+
+        for (player, transform) in &query {
+            if player.value == ev.player {
+                commands.spawn((
+                    Node {
+                        width: Val::Px(dimensions[0]),
+                        height: Val::Px(dimensions[1]),
+                        position_type: PositionType::Absolute,
+                        bottom: Val::Px(
+                            transform.translation.y + window.height() / 2. - (dimensions[1] / 2.),
+                        ),
+                        left: Val::Px(
+                            transform.translation.x + window.width() / 2. - (dimensions[0] / 2.),
+                        ),
+                        align_content: AlignContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    Text::new(&ev.value),
+                    TextFont {
+                        font_size: 25.,
+                        ..default()
+                    },
+                    TextColor(Color::WHITE),
+                    TextLayout::new_with_justify(JustifyText::Center),
+                    PlayerTickText,
+                ));
+            }
+        }
+    }
+}
+
+fn despawn_player_tick_ui(mut commands: Commands, query: Query<Entity, With<PlayerTickText>>) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn();
+    }
+}
+
+fn animate_player_tick_text_opacity(
+    mut colors: Query<&mut TextColor, With<PlayerTickText>>,
+    time: Res<Time>,
+) {
+    for mut color in &mut colors {
+        let alpha = color.0.alpha();
+        color.0.set_alpha(alpha - time.delta_secs() * 0.65);
+    }
+}
+
+fn animate_player_tick_font_size(
+    mut text_fonts: Query<&mut TextFont, With<PlayerTickText>>,
+    time: Res<Time>,
+) {
+    for mut text_font in &mut text_fonts {
+        text_font.font_size += time.delta_secs() * 10.;
     }
 }
 
@@ -941,6 +1094,15 @@ fn decrease_bullets(mut query: Query<(&PlayerState, &mut Bullets), With<Player>>
     }
 }
 
+fn check_fighting_phase_ended(query: Query<&TextColor, With<PlayerTickText>>) -> bool {
+    let mut conditions: Vec<bool> = vec![];
+
+    for color in &query {
+        conditions.push(color.0.alpha() <= 0.);
+    }
+
+    conditions.iter().all(|condition| *condition)
+}
 // Rounding up
 // ----------------------------------------------------------------
 
