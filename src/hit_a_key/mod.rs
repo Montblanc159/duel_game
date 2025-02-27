@@ -19,6 +19,7 @@ const N_FACETED_DICE: u8 = 100;
 const N_MAX_ROUND: u8 = 8;
 const DEFAULT_LUCK: u8 = N_FACETED_DICE - (N_FACETED_DICE as f32 * 0.1) as u8;
 const DEFAULT_DAMAGE: u8 = 1;
+const DEFAULT_HEALTH: u8 = 5;
 
 // UI_DEFAULTS
 // ================================================================
@@ -113,6 +114,10 @@ struct PressSpacebarText;
 
 struct PlayerTickText;
 
+#[derive(Component)]
+
+struct AlertText;
+
 // Events
 // ================================================================
 
@@ -139,6 +144,11 @@ struct MissedEvent {
 #[derive(Event)]
 struct TickPlayerEvent {
     player: u8,
+    value: String,
+}
+
+#[derive(Event)]
+struct AlertEvent {
     value: String,
 }
 
@@ -229,6 +239,7 @@ impl Plugin for HitAKeyPlugin {
         app.add_event::<DamageEvent>();
         app.add_event::<MissedEvent>();
         app.add_event::<TickPlayerEvent>();
+        app.add_event::<AlertEvent>();
 
         app.add_systems(
             Startup,
@@ -246,8 +257,14 @@ impl Plugin for HitAKeyPlugin {
                 .chain(),
         );
 
-        app.add_systems(OnEnter(PlayStates::Preparing), spawn_press_spacebar_ui);
-        app.add_systems(OnExit(PlayStates::Preparing), despawn_press_spacebar_ui);
+        app.add_systems(
+            OnEnter(PlayStates::Preparing),
+            (check_if_last_round, spawn_press_spacebar_ui),
+        );
+        app.add_systems(
+            OnExit(PlayStates::Preparing),
+            (despawn_press_spacebar_ui, despawn_alert_text),
+        );
 
         app.add_systems(
             OnEnter(PlayStates::Countdown),
@@ -283,7 +300,7 @@ impl Plugin for HitAKeyPlugin {
             OnEnter(PlayStates::RoundingUp),
             (
                 check_if_dead,
-                check_if_last_round.run_if(is_not_game_over),
+                check_if_no_more_rounds.run_if(is_not_game_over),
                 check_if_out_of_ammo.run_if(is_not_game_over),
             )
                 .chain(),
@@ -304,6 +321,7 @@ impl Plugin for HitAKeyPlugin {
             Update,
             (
                 listen_game_overs,
+                listen_spawn_alert_text,
                 player_state_text_update,
                 round_number_text_update,
                 play_state_text_update,
@@ -380,7 +398,9 @@ fn spawn_players(
 ) {
     commands.spawn((
         Player { value: 1 },
-        Health { value: 3 },
+        Health {
+            value: DEFAULT_HEALTH,
+        },
         Luck {
             value: DEFAULT_LUCK,
         },
@@ -402,7 +422,9 @@ fn spawn_players(
 
     commands.spawn((
         Player { value: 2 },
-        Health { value: 3 },
+        Health {
+            value: DEFAULT_HEALTH,
+        },
         Luck {
             value: DEFAULT_LUCK,
         },
@@ -733,6 +755,44 @@ fn listen_game_overs(
     }
 }
 
+fn listen_spawn_alert_text(
+    mut ev_alert: EventReader<AlertEvent>,
+    window_query: Query<&Window>,
+    mut commands: Commands,
+) {
+    for ev in ev_alert.read() {
+        let window = window_query.single();
+        let dimensions = [window.width(), 250.];
+
+        commands.spawn((
+            Node {
+                width: Val::Px(dimensions[0]),
+                height: Val::Px(dimensions[1]),
+                position_type: PositionType::Absolute,
+                bottom: Val::Px(window.height() / 2. - (dimensions[1] / 2.)),
+                left: Val::Px(window.width() / 2. - (dimensions[0] / 2.)),
+                align_content: AlignContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            Text::new(&ev.value),
+            TextFont {
+                font_size: 100.,
+                ..default()
+            },
+            TextColor(Color::WHITE),
+            TextLayout::new_with_justify(JustifyText::Center),
+            AlertText,
+        ));
+    }
+}
+
+fn despawn_alert_text(mut commands: Commands, query: Query<Entity, With<AlertText>>) {
+    for entity in &query {
+        commands.entity(entity).despawn();
+    }
+}
+
 // Preparing
 // ----------------------------------------------------------------
 
@@ -766,6 +826,14 @@ fn despawn_press_spacebar_ui(
 ) {
     for entity in &query {
         commands.entity(entity).despawn();
+    }
+}
+
+fn check_if_last_round(round: Res<RoundCounter>, mut ev_last_round: EventWriter<AlertEvent>) {
+    if round.0 == N_MAX_ROUND {
+        ev_last_round.send(AlertEvent {
+            value: "Last round!".into(),
+        });
     }
 }
 
@@ -1211,7 +1279,7 @@ fn check_if_out_of_ammo(
     }
 }
 
-fn check_if_last_round(
+fn check_if_no_more_rounds(
     mut ev_game_over: EventWriter<GameOverEvent>,
     mut query: Query<(&Health, &Player)>,
     mut game_over: ResMut<GameOver>,
