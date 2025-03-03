@@ -1,9 +1,11 @@
 DOING:
-- UI
-     - last round indicator
-     - bullet/dodge acquired
-     - winner/loser screen
 
+- add buffes
+- buffes rand or health doesn't seem to work
+- reset buff after used
+
+- UI
+     - buffs indicator
 TODO:
 - refactor with sytem sets
 - restart mechanism
@@ -13,8 +15,6 @@ TODO:
 
 
 -----
-
-Last round event
 
 Win/Lose event
 - despawn everything ?

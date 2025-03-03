@@ -302,6 +302,8 @@ impl Plugin for HitAKeyPlugin {
                 check_if_dead,
                 check_if_no_more_rounds.run_if(is_not_game_over),
                 check_if_out_of_ammo.run_if(is_not_game_over),
+                restore_bullet.run_if(is_not_game_over),
+                restore_dodge.run_if(is_not_game_over),
             )
                 .chain(),
         );
@@ -310,12 +312,13 @@ impl Plugin for HitAKeyPlugin {
             OnExit(PlayStates::RoundingUp),
             (
                 prepare_player_for_next_round,
-                restore_bullet,
-                restore_dodge,
                 increase_round_counter,
+                despawn_player_tick_ui,
             )
                 .run_if(is_not_game_over),
         );
+
+        app.add_systems(OnEnter(PlayStates::GameOver), spawn_winner_text);
 
         app.add_systems(
             Update,
@@ -344,9 +347,15 @@ impl Plugin for HitAKeyPlugin {
                 )
                     .run_if(in_state(PlayStates::Fighting))
                     .chain(),
-                next_play_state
+                (
+                    listen_spawn_player_tick_ui,
+                    animate_player_tick_text_opacity,
+                    animate_player_tick_font_size,
+                    (next_play_state).run_if(check_rounding_up_phase_ended),
+                )
                     .run_if(in_state(PlayStates::RoundingUp))
-                    .run_if(is_not_game_over),
+                    .run_if(is_not_game_over)
+                    .chain(),
             ),
         );
     }
@@ -354,6 +363,72 @@ impl Plugin for HitAKeyPlugin {
 
 // Systems
 // ================================================================
+
+fn listen_spawn_player_tick_ui(
+    mut commands: Commands,
+    mut ev_tick_player: EventReader<TickPlayerEvent>,
+    query: Query<(&Player, &Transform), With<Player>>,
+    window_query: Query<&Window>,
+) {
+    for ev in ev_tick_player.read() {
+        let window = window_query.single();
+        let dimensions = [450., 250.];
+
+        for (player, transform) in &query {
+            if player.value == ev.player {
+                commands.spawn((
+                    Node {
+                        width: Val::Px(dimensions[0]),
+                        height: Val::Px(dimensions[1]),
+                        position_type: PositionType::Absolute,
+                        bottom: Val::Px(
+                            transform.translation.y + window.height() / 2. - (dimensions[1] / 2.),
+                        ),
+                        left: Val::Px(
+                            transform.translation.x + window.width() / 2. - (dimensions[0] / 2.),
+                        ),
+                        align_content: AlignContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    Text::new(&ev.value),
+                    TextFont {
+                        font_size: 25.,
+                        ..default()
+                    },
+                    TextColor(Color::WHITE),
+                    TextLayout::new_with_justify(JustifyText::Center),
+                    PlayerTickText,
+                ));
+            }
+        }
+    }
+}
+
+fn despawn_player_tick_ui(mut commands: Commands, query: Query<Entity, With<PlayerTickText>>) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn();
+    }
+}
+
+fn animate_player_tick_text_opacity(
+    mut colors: Query<&mut TextColor, With<PlayerTickText>>,
+    time: Res<Time>,
+) {
+    for mut color in &mut colors {
+        let alpha = color.0.alpha();
+        color.0.set_alpha(alpha - time.delta_secs() * 0.65);
+    }
+}
+
+fn animate_player_tick_font_size(
+    mut text_fonts: Query<&mut TextFont, With<PlayerTickText>>,
+    time: Res<Time>,
+) {
+    for mut text_font in &mut text_fonts {
+        text_font.font_size += time.delta_secs() * 10.;
+    }
+}
 
 fn spawn_timer_ui(mut commands: Commands, window_query: Query<&Window>) {
     let window = window_query.single();
@@ -1033,14 +1108,12 @@ fn fight(
                     });
                 }
             }
-            _ => {
-                println!("Nothing happened !")
-            } // [PlayerStates::Attacking, PlayerStates::Dodging] => {},
-              // [PlayerStates::Dodging, PlayerStates::Attacking] => {},
-              // [PlayerStates::Dodging, PlayerStates::Idle] => {},
-              // [PlayerStates::Dodging, PlayerStates::Dodging] => {},
-              // [PlayerStates::Idle, PlayerStates::Dodging] => {},
-              // [PlayerStates::Idle, PlayerStates::Idle] => {},
+            _ => {} // [PlayerStates::Attacking, PlayerStates::Dodging] => {},
+                    // [PlayerStates::Dodging, PlayerStates::Attacking] => {},
+                    // [PlayerStates::Dodging, PlayerStates::Idle] => {},
+                    // [PlayerStates::Dodging, PlayerStates::Dodging] => {},
+                    // [PlayerStates::Idle, PlayerStates::Dodging] => {},
+                    // [PlayerStates::Idle, PlayerStates::Idle] => {},
         }
     }
 }
@@ -1077,72 +1150,6 @@ fn listen_missed_event(
                 });
             }
         }
-    }
-}
-
-fn listen_spawn_player_tick_ui(
-    mut commands: Commands,
-    mut ev_tick_player: EventReader<TickPlayerEvent>,
-    query: Query<(&Player, &Transform), With<Player>>,
-    window_query: Query<&Window>,
-) {
-    for ev in ev_tick_player.read() {
-        let window = window_query.single();
-        let dimensions = [250., 250.];
-
-        for (player, transform) in &query {
-            if player.value == ev.player {
-                commands.spawn((
-                    Node {
-                        width: Val::Px(dimensions[0]),
-                        height: Val::Px(dimensions[1]),
-                        position_type: PositionType::Absolute,
-                        bottom: Val::Px(
-                            transform.translation.y + window.height() / 2. - (dimensions[1] / 2.),
-                        ),
-                        left: Val::Px(
-                            transform.translation.x + window.width() / 2. - (dimensions[0] / 2.),
-                        ),
-                        align_content: AlignContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    Text::new(&ev.value),
-                    TextFont {
-                        font_size: 25.,
-                        ..default()
-                    },
-                    TextColor(Color::WHITE),
-                    TextLayout::new_with_justify(JustifyText::Center),
-                    PlayerTickText,
-                ));
-            }
-        }
-    }
-}
-
-fn despawn_player_tick_ui(mut commands: Commands, query: Query<Entity, With<PlayerTickText>>) {
-    for entity in query.iter() {
-        commands.entity(entity).despawn();
-    }
-}
-
-fn animate_player_tick_text_opacity(
-    mut colors: Query<&mut TextColor, With<PlayerTickText>>,
-    time: Res<Time>,
-) {
-    for mut color in &mut colors {
-        let alpha = color.0.alpha();
-        color.0.set_alpha(alpha - time.delta_secs() * 0.65);
-    }
-}
-
-fn animate_player_tick_font_size(
-    mut text_fonts: Query<&mut TextFont, With<PlayerTickText>>,
-    time: Res<Time>,
-) {
-    for mut text_font in &mut text_fonts {
-        text_font.font_size += time.delta_secs() * 10.;
     }
 }
 
@@ -1324,15 +1331,22 @@ fn check_if_no_more_rounds(
 
 fn restore_dodge(
     round_counter: Res<RoundCounter>,
-    mut query: Query<(&mut Dodges, &Luck), With<Player>>,
+    mut query: Query<(&mut Dodges, &Luck, &Player), With<Player>>,
+    mut ev_tick_player: EventWriter<TickPlayerEvent>,
 ) {
     if round_counter.0 % 2 == 0 {
-        for (mut dodges, luck) in &mut query {
+        for (mut dodges, luck, player) in &mut query {
             if roll_the_dice(N_FACETED_DICE) <= luck.value {
                 dodges.value += 1;
-                println!("1 dodge acquired!");
+                ev_tick_player.send(TickPlayerEvent {
+                    player: player.value,
+                    value: "+1 dodge".into(),
+                });
             } else {
-                println!("Failed to restore a dodge!");
+                ev_tick_player.send(TickPlayerEvent {
+                    player: player.value,
+                    value: "+0 dodge".into(),
+                });
             }
         }
     }
@@ -1340,22 +1354,89 @@ fn restore_dodge(
 
 fn restore_bullet(
     round_counter: Res<RoundCounter>,
-    mut query: Query<(&mut Bullets, &Luck), With<Player>>,
+    mut query: Query<(&mut Bullets, &Luck, &Player), With<Player>>,
+    mut ev_tick_player: EventWriter<TickPlayerEvent>,
 ) {
     if round_counter.0 % 2 == 0 {
-        for (mut bullets, luck) in &mut query {
+        for (mut bullets, luck, player) in &mut query {
             if roll_the_dice(N_FACETED_DICE) <= luck.value {
                 bullets.value += 1;
-                println!("1 bullet acquired!");
+                ev_tick_player.send(TickPlayerEvent {
+                    player: player.value,
+                    value: "\n+1 bullet".into(),
+                });
             } else {
-                println!("Failed to restore a bullet!");
+                ev_tick_player.send(TickPlayerEvent {
+                    player: player.value,
+                    value: "\n+0 bullet".into(),
+                });
             }
         }
     }
 }
 
+fn check_rounding_up_phase_ended(query: Query<&TextColor, With<PlayerTickText>>) -> bool {
+    let mut conditions: Vec<bool> = vec![];
+
+    for color in &query {
+        conditions.push(color.0.alpha() <= 0.);
+    }
+
+    conditions.iter().all(|condition| *condition)
+}
+
 fn increase_round_counter(mut round_counter: ResMut<RoundCounter>) {
     round_counter.0 += 1;
+}
+
+// Game over
+// ----------------------------------------------------------------
+
+fn spawn_winner_text(
+    mut ev_game_over: EventReader<GameOverEvent>,
+    mut commands: Commands,
+    query: Query<&Window>,
+) {
+    let window = query.single();
+    // let dimensions = [window.width(), window.height()];
+
+    for ev in ev_game_over.read() {
+        let mut game_over_screen = commands.spawn((
+            Node {
+                width: Val::Px(window.width()),
+                height: Val::Px(window.height()),
+                align_content: AlignContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(25., 0., 255., 0.5)),
+        ));
+
+        match ev.state {
+            GameOvers::Winner => {
+                game_over_screen.with_child((
+                    Node {
+                        width: Val::Px(window.width()),
+                        ..default()
+                    },
+                    Text::new(format!("Player {} won", ev.player.unwrap())),
+                    TextLayout::new_with_justify(JustifyText::Center),
+                    TextFont::from_font_size(125.),
+                ));
+            }
+            GameOvers::Tie => {
+                game_over_screen.with_child((
+                    Node {
+                        width: Val::Px(window.width()),
+                        ..default()
+                    },
+                    Text::new("It's a tie!"),
+                    TextLayout::new_with_justify(JustifyText::Center),
+                    TextFont::from_font_size(125.),
+                ));
+            }
+        }
+    }
 }
 
 // Helpers
