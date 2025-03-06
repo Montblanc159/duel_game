@@ -1,25 +1,15 @@
 DOING:
+- add press x to exit on game over screen
+- add press to restart on game over screen
+- add tick on health win (buff)
 
-- add buffes
-- buffes rand or health doesn't seem to work
-- reset buff after used
-
-- UI
-     - buffs indicator
 TODO:
-- refactor with sytem sets
-- restart mechanism
-- menu
+- refactor with system sets ?
 - Graphics & anims !!
 - Audio
 
 
 -----
-
-Win/Lose event
-- despawn everything ?
-- spawn winning screen with which player won
--
 
 Graphic ideas :
 - hand drawing depending on health (more or less tired)

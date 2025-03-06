@@ -13,13 +13,15 @@ const PLAYER_KEY_ASSIGNMENTS: [[KeyCode; N_KEYS_PER_PLAYER]; 2] = [
 ];
 const PLAYER_ONE_KEYS: [KeyCode; N_KEYS_PER_PLAYER] = PLAYER_KEY_ASSIGNMENTS[0];
 const PLAYER_TWO_KEYS: [KeyCode; N_KEYS_PER_PLAYER] = PLAYER_KEY_ASSIGNMENTS[1];
-const N_BULLETS: u8 = 3;
-const N_DODGES: u8 = 3;
+const N_BULLETS: u8 = 2;
+const N_DODGES: u8 = 1;
 const N_FACETED_DICE: u8 = 100;
-const N_MAX_ROUND: u8 = 8;
-const DEFAULT_LUCK: u8 = N_FACETED_DICE - (N_FACETED_DICE as f32 * 0.1) as u8;
+const DEFAULT_LUCK: u8 = 50;
+const N_MAX_ROUND: u8 = 6;
 const DEFAULT_DAMAGE: u8 = 1;
-const DEFAULT_HEALTH: u8 = 5;
+const DEFAULT_HEALTH: u8 = 3;
+const DEFAULT_COUNTDOWN_TIMER: f32 = 3.0;
+const DEFAULT_BETTING_TIMER: f32 = 5.0;
 
 // UI_DEFAULTS
 // ================================================================
@@ -28,6 +30,11 @@ const DEFAULT_MARGIN: f32 = 75.;
 
 // Components
 // ================================================================
+#[derive(Component)]
+struct InGameEntity;
+
+#[derive(Component)]
+struct MenuEntity;
 
 #[derive(Component)]
 struct Player {
@@ -99,6 +106,11 @@ struct BulletText {
 }
 
 #[derive(Component)]
+struct BuffText {
+    value: u8,
+}
+
+#[derive(Component)]
 struct DodgeText {
     value: u8,
 }
@@ -142,6 +154,11 @@ struct MissedEvent {
 }
 
 #[derive(Event)]
+struct DodgedEvent {
+    player: u8,
+}
+
+#[derive(Event)]
 struct TickPlayerEvent {
     player: u8,
     value: String,
@@ -171,18 +188,28 @@ enum GameOvers {
     Winner,
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 enum Buffes {
+    GoldenBulletBuff,
     DoubleDamageBuff,
+    IncreaseDamageBuff,
     HealBuff,
+    SuperHealBuff,
+    LuckBuff,
+    MarksmanshipBuff,
 }
 
 impl Distribution<Buffes> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Buffes {
-        let index = rng.random_range(0..1);
+        let index = rng.random_range(0..=6);
         match index {
-            0 => Buffes::DoubleDamageBuff,
-            1 => Buffes::HealBuff,
+            0 => Buffes::GoldenBulletBuff,
+            1 => Buffes::DoubleDamageBuff,
+            2 => Buffes::IncreaseDamageBuff,
+            3 => Buffes::HealBuff,
+            4 => Buffes::SuperHealBuff,
+            5 => Buffes::LuckBuff,
+            6 => Buffes::MarksmanshipBuff,
             _ => unreachable!(),
         }
     }
@@ -199,14 +226,15 @@ enum PlayStates {
     Fighting,
     RoundingUp,
     GameOver,
+    Paused,
 }
 
-// #[derive(States, Debug, Clone, PartialEq, Eq, Hash)]
-// enum GameStates {
-//     Playing,
-//     Menu,
-//     Paused
-// }
+#[derive(States, Debug, Clone, PartialEq, Eq, Hash)]
+enum AppStates {
+    InGame,
+    Menu,
+    // Paused,
+}
 
 // Resources
 // ================================================================
@@ -227,10 +255,17 @@ struct GameOver(bool);
 
 impl Plugin for HitAKeyPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_state(PlayStates::Betting);
+        app.insert_state(AppStates::Menu);
+        app.insert_state(PlayStates::Paused);
 
-        app.insert_resource(BettingTimer(Timer::from_seconds(8.0, TimerMode::Once)));
-        app.insert_resource(CountdownTimer(Timer::from_seconds(3.0, TimerMode::Once)));
+        app.insert_resource(BettingTimer(Timer::from_seconds(
+            DEFAULT_BETTING_TIMER,
+            TimerMode::Once,
+        )));
+        app.insert_resource(CountdownTimer(Timer::from_seconds(
+            DEFAULT_COUNTDOWN_TIMER,
+            TimerMode::Once,
+        )));
         app.insert_resource(RoundCounter(1));
         app.insert_resource(GameOver(false));
 
@@ -238,13 +273,30 @@ impl Plugin for HitAKeyPlugin {
         app.add_event::<PlayerStateChangeEvent>();
         app.add_event::<DamageEvent>();
         app.add_event::<MissedEvent>();
+        app.add_event::<DodgedEvent>();
         app.add_event::<TickPlayerEvent>();
         app.add_event::<AlertEvent>();
 
+        app.add_systems(Startup, spawn_camera);
+
+        app.add_systems(OnExit(AppStates::Menu), clean_menu);
         app.add_systems(
-            Startup,
+            OnExit(AppStates::InGame),
+            (pause_game, clean_in_game).chain(),
+        );
+
+        app.add_systems(OnEnter(AppStates::Menu), spawn_start_game_ui);
+
+        app.add_systems(
+            Update,
+            wait_for_input_to_start_game.run_if(in_state(AppStates::Menu)),
+        );
+
+        app.add_systems(
+            OnEnter(AppStates::InGame),
             (
-                (spawn_camera, spawn_players),
+                launch_game,
+                spawn_players,
                 (
                     spawn_play_state_text,
                     spawn_player_state_text,
@@ -282,7 +334,20 @@ impl Plugin for HitAKeyPlugin {
             OnExit(PlayStates::Betting),
             (
                 despawn_timer_ui,
-                (add_buffes, (double_damage_buff, heal_buff)).chain(),
+                (
+                    add_buffes,
+                    spawn_buff_text,
+                    (
+                        increase_damage_buff,
+                        golden_bullet_buff,
+                        heal_buff,
+                        super_heal_buff,
+                        double_damage_buff,
+                        luck_buff,
+                        marksmanship_buff,
+                    ),
+                )
+                    .chain(),
             ),
         );
 
@@ -293,7 +358,13 @@ impl Plugin for HitAKeyPlugin {
 
         app.add_systems(
             OnExit(PlayStates::Fighting),
-            (remove_buffes, despawn_player_tick_ui),
+            (
+                (remove_buffes, despawn_buff_text).chain(),
+                damage_reset,
+                marksmanship_reset,
+                luck_reset,
+                despawn_player_tick_ui,
+            ),
         );
 
         app.add_systems(
@@ -319,6 +390,7 @@ impl Plugin for HitAKeyPlugin {
         );
 
         app.add_systems(OnEnter(PlayStates::GameOver), spawn_winner_text);
+        // app.add_systems(OnExit(PlayStates::GameOver));
 
         app.add_systems(
             Update,
@@ -340,6 +412,7 @@ impl Plugin for HitAKeyPlugin {
                 (
                     listen_damage_event,
                     listen_missed_event,
+                    listen_dodged_event,
                     listen_spawn_player_tick_ui,
                     animate_player_tick_text_opacity,
                     animate_player_tick_font_size,
@@ -356,13 +429,78 @@ impl Plugin for HitAKeyPlugin {
                     .run_if(in_state(PlayStates::RoundingUp))
                     .run_if(is_not_game_over)
                     .chain(),
-            ),
+                wait_for_input_to_exit_game.run_if(in_state(PlayStates::GameOver)),
+            )
+                .run_if(in_state(AppStates::InGame)),
         );
     }
 }
 
 // Systems
 // ================================================================
+
+fn clean_in_game(mut commands: Commands, query: Query<Entity, With<InGameEntity>>) {
+    for entity in &query {
+        commands.entity(entity).despawn()
+    }
+}
+
+fn clean_menu(mut commands: Commands, query: Query<Entity, With<MenuEntity>>) {
+    for entity in &query {
+        commands.entity(entity).despawn()
+    }
+}
+
+// MENU
+
+fn wait_for_input_to_start_game(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut next_app_state: ResMut<NextState<AppStates>>,
+) {
+    for key in keys.get_just_pressed() {
+        if *key == KeyCode::Enter {
+            next_app_state.set(AppStates::InGame);
+        }
+    }
+}
+
+fn spawn_start_game_ui(mut commands: Commands, query: Query<&Window>) {
+    let window = query.single();
+    // let dimensions = [window.width(), window.height()];
+
+    commands
+        .spawn((
+            Node {
+                width: Val::Px(window.width()),
+                height: Val::Px(window.height()),
+                align_content: AlignContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(25., 0., 255., 0.5)),
+            MenuEntity,
+        ))
+        .with_child((
+            Node {
+                width: Val::Px(window.width()),
+                ..default()
+            },
+            Text::new("Press Enter to start game !"),
+            TextLayout::new_with_justify(JustifyText::Center),
+            TextFont::from_font_size(125.),
+            MenuEntity,
+        ));
+}
+
+// INGAME
+
+fn pause_game(mut next_play_state: ResMut<NextState<PlayStates>>) {
+    next_play_state.set(PlayStates::Paused);
+}
+
+fn launch_game(mut next_play_state: ResMut<NextState<PlayStates>>) {
+    next_play_state.set(PlayStates::Countdown);
+}
 
 fn listen_spawn_player_tick_ui(
     mut commands: Commands,
@@ -399,6 +537,7 @@ fn listen_spawn_player_tick_ui(
                     TextColor(Color::WHITE),
                     TextLayout::new_with_justify(JustifyText::Center),
                     PlayerTickText,
+                    InGameEntity,
                 ));
             }
         }
@@ -453,6 +592,7 @@ fn spawn_timer_ui(mut commands: Commands, window_query: Query<&Window>) {
         TextColor(Color::WHITE),
         TextLayout::new_with_justify(JustifyText::Center),
         TimerUIText,
+        InGameEntity,
     ));
 }
 
@@ -493,6 +633,7 @@ fn spawn_players(
         Mesh2d(meshes.add(Circle::new(50.0))),
         MeshMaterial2d(materials.add(Color::srgb(255., 0., 0.))),
         Transform::from_xyz(-250., 0.0, 0.0),
+        InGameEntity,
     ));
 
     commands.spawn((
@@ -517,6 +658,7 @@ fn spawn_players(
         Mesh2d(meshes.add(Circle::new(50.0))),
         MeshMaterial2d(materials.add(Color::srgb(0., 0., 255.))),
         Transform::from_xyz(250., 0.0, 0.0),
+        InGameEntity,
     ));
 }
 
@@ -541,6 +683,7 @@ fn spawn_play_state_text(mut commands: Commands, query: Query<&Window>) {
         TextColor(Color::WHITE),
         TextLayout::new_with_justify(JustifyText::Center),
         PlayStateText,
+        InGameEntity,
     ));
 }
 
@@ -574,6 +717,7 @@ fn spawn_round_number_text(mut commands: Commands, query: Query<&Window>) {
         TextColor(Color::WHITE),
         TextLayout::new_with_justify(JustifyText::Center),
         RoundNumberText,
+        InGameEntity,
     ));
 }
 
@@ -618,6 +762,7 @@ fn spawn_player_state_text(
             PlayerStateText {
                 value: player.value,
             },
+            InGameEntity,
         ));
     }
 }
@@ -674,6 +819,7 @@ fn spawn_health_text(
             HealthText {
                 value: player.value,
             },
+            InGameEntity,
         ));
     }
 }
@@ -727,6 +873,7 @@ fn spawn_bullet_text(
             BulletText {
                 value: player.value,
             },
+            InGameEntity,
         ));
     }
 }
@@ -780,6 +927,7 @@ fn spawn_dodge_text(
             DodgeText {
                 value: player.value,
             },
+            InGameEntity,
         ));
     }
 }
@@ -809,7 +957,7 @@ fn wait_for_input_to_next_play_state(
     play_state: Res<State<PlayStates>>,
     mut next_play_state: ResMut<NextState<PlayStates>>,
 ) {
-    for key in keys.get_pressed() {
+    for key in keys.get_just_pressed() {
         if *key == KeyCode::Space {
             next_play_state.set(play_state_transitions(*play_state.get()));
         }
@@ -858,6 +1006,7 @@ fn listen_spawn_alert_text(
             TextColor(Color::WHITE),
             TextLayout::new_with_justify(JustifyText::Center),
             AlertText,
+            InGameEntity,
         ));
     }
 }
@@ -892,6 +1041,7 @@ fn spawn_press_spacebar_ui(mut commands: Commands, query: Query<&Window>) {
         TextColor(Color::WHITE),
         TextLayout::new_with_justify(JustifyText::Center),
         PressSpacebarText,
+        InGameEntity,
     ));
 }
 
@@ -968,7 +1118,7 @@ fn set_player_state(
     mut ev_change_player_state: EventWriter<PlayerStateChangeEvent>,
     keys: Res<ButtonInput<KeyCode>>,
 ) {
-    for key in keys.get_pressed() {
+    for key in keys.get_just_pressed() {
         for (key_assignements, mut player_state, dodges, bullets) in &mut query {
             let requested_state =
                 key_to_player_state(&key_assignements.0, key).unwrap_or(player_state.0);
@@ -1011,11 +1161,43 @@ fn remove_buffes(mut query: Query<&mut Buff, With<Player>>) {
     }
 }
 
-fn double_damage_buff(mut query: Query<(&Buff, &mut Damage), With<Player>>) {
-    for (&buff, mut damage) in &mut query {
+fn increase_damage_buff(
+    mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &mut Bullets), With<Player>>,
+) {
+    for (&buff, mut damage, mut player_state, mut bullets) in &mut query {
+        if let Some(buff_value) = buff.value {
+            if buff_value == Buffes::IncreaseDamageBuff {
+                damage.value += 1;
+                bullets.value += 1;
+                player_state.0 = PlayerStates::Attacking;
+            }
+        }
+    }
+}
+
+fn double_damage_buff(
+    mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &mut Bullets), With<Player>>,
+) {
+    for (&buff, mut damage, mut player_state, mut bullets) in &mut query {
         if let Some(buff_value) = buff.value {
             if buff_value == Buffes::DoubleDamageBuff {
                 damage.value *= 2;
+                bullets.value += 1;
+                player_state.0 = PlayerStates::Attacking;
+            }
+        }
+    }
+}
+
+fn golden_bullet_buff(
+    mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &mut Bullets), With<Player>>,
+) {
+    for (&buff, mut damage, mut player_state, mut bullets) in &mut query {
+        if let Some(buff_value) = buff.value {
+            if buff_value == Buffes::GoldenBulletBuff {
+                damage.value = 5;
+                bullets.value += 1;
+                player_state.0 = PlayerStates::Attacking;
             }
         }
     }
@@ -1025,7 +1207,102 @@ fn heal_buff(mut query: Query<(&Buff, &mut Health), With<Player>>) {
     for (&buff, mut health) in &mut query {
         if let Some(buff_value) = buff.value {
             if buff_value == Buffes::HealBuff {
-                health.value += 1;
+                if health.value < DEFAULT_HEALTH {
+                    health.value += 1;
+                } else {
+                    health.value = DEFAULT_HEALTH
+                }
+            }
+        }
+    }
+}
+
+fn super_heal_buff(mut query: Query<(&Buff, &mut Health), With<Player>>) {
+    for (&buff, mut health) in &mut query {
+        if let Some(buff_value) = buff.value {
+            if buff_value == Buffes::SuperHealBuff {
+                if health.value < DEFAULT_HEALTH - 1 {
+                    health.value += 2;
+                } else {
+                    health.value = DEFAULT_HEALTH
+                }
+            }
+        }
+    }
+}
+
+fn luck_buff(mut query: Query<(&Buff, &mut Luck), With<Player>>) {
+    for (&buff, mut luck) in &mut query {
+        if let Some(buff_value) = buff.value {
+            if buff_value == Buffes::LuckBuff {
+                luck.value += 50;
+            }
+        }
+    }
+}
+
+fn marksmanship_buff(mut query: Query<(&Buff, &mut Marksmanship), With<Player>>) {
+    for (&buff, mut marksmanship) in &mut query {
+        if let Some(buff_value) = buff.value {
+            if buff_value == Buffes::MarksmanshipBuff {
+                marksmanship.value += 50;
+            }
+        }
+    }
+}
+
+fn spawn_buff_text(
+    mut commands: Commands,
+    window_query: Query<&Window>,
+    query: Query<(&Player, &PlayerState, &Buff), With<Player>>,
+) {
+    let window = window_query.single();
+    let dimensions = [25., 200.];
+
+    for (player, player_state, buff) in &query {
+        if buff.value.is_some() && player_state.0 == PlayerStates::Buffing {
+            let left_position = if player.value == 1 {
+                DEFAULT_MARGIN + 50.
+            } else {
+                window.width() - DEFAULT_MARGIN - 50.
+            };
+
+            commands.spawn((
+                Node {
+                    width: Val::Px(dimensions[0]),
+                    height: Val::Px(dimensions[1]),
+                    position_type: PositionType::Relative,
+                    top: Val::Px(window.height() / 2.),
+                    left: Val::Px(left_position - (dimensions[0] / 2.)),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                Text::new(format!("{:?}", buff.value.unwrap())),
+                TextFont {
+                    font_size: 10.,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+                TextLayout::new_with_justify(JustifyText::Center),
+                BuffText {
+                    value: player.value,
+                },
+                InGameEntity,
+            ));
+        }
+    }
+}
+
+fn despawn_buff_text(
+    mut commands: Commands,
+    query: Query<(Entity, &BuffText), With<BuffText>>,
+    query_player: Query<(&Player, &Buff)>,
+) {
+    for (entity, buff_text) in &query {
+        for (player, buff) in &query_player {
+            if player.value == buff_text.value && buff.value.is_none() {
+                commands.entity(entity).despawn();
             }
         }
     }
@@ -1047,6 +1324,7 @@ fn update_betting_timer_ui(
 fn fight(
     query: Query<(&PlayerState, &Luck, &Marksmanship, &Damage, &Player), With<Player>>,
     mut ev_damage: EventWriter<DamageEvent>,
+    mut ev_dodged: EventWriter<DodgedEvent>,
     mut ev_missed: EventWriter<MissedEvent>,
 ) {
     let mut query_mut = query.iter_combinations();
@@ -1108,9 +1386,17 @@ fn fight(
                     });
                 }
             }
-            _ => {} // [PlayerStates::Attacking, PlayerStates::Dodging] => {},
-                    // [PlayerStates::Dodging, PlayerStates::Attacking] => {},
-                    // [PlayerStates::Dodging, PlayerStates::Idle] => {},
+            [PlayerStates::Dodging, PlayerStates::Attacking] => {
+                ev_dodged.send(DodgedEvent {
+                    player: player_0.value,
+                });
+            }
+            [PlayerStates::Attacking, PlayerStates::Dodging] => {
+                ev_dodged.send(DodgedEvent {
+                    player: player_1.value,
+                });
+            }
+            _ => {} // [PlayerStates::Dodging, PlayerStates::Idle] => {},
                     // [PlayerStates::Dodging, PlayerStates::Dodging] => {},
                     // [PlayerStates::Idle, PlayerStates::Dodging] => {},
                     // [PlayerStates::Idle, PlayerStates::Idle] => {},
@@ -1127,6 +1413,7 @@ fn listen_damage_event(
         for (mut health, player) in &mut query {
             if player.value == ev.player {
                 health.value = health.value.checked_sub(ev.value).unwrap_or(0);
+
                 ev_tick_player.send(TickPlayerEvent {
                     player: player.value,
                     value: format!("-{}", ev.value),
@@ -1153,10 +1440,27 @@ fn listen_missed_event(
     }
 }
 
+fn listen_dodged_event(
+    mut ev_dodged: EventReader<DodgedEvent>,
+    mut ev_tick_player: EventWriter<TickPlayerEvent>,
+    query: Query<&Player>,
+) {
+    for ev in ev_dodged.read() {
+        for player in &query {
+            if player.value == ev.player {
+                ev_tick_player.send(TickPlayerEvent {
+                    player: player.value,
+                    value: "Dodged!".into(),
+                });
+            }
+        }
+    }
+}
+
 fn decrease_dodges(mut query: Query<(&PlayerState, &mut Dodges), With<Player>>) {
     for (player_state, mut dodges) in &mut query {
         if player_state.0 == PlayerStates::Dodging {
-            dodges.value -= 1
+            dodges.value = dodges.value.checked_sub(1).unwrap_or(0)
         }
     }
 }
@@ -1164,7 +1468,31 @@ fn decrease_dodges(mut query: Query<(&PlayerState, &mut Dodges), With<Player>>) 
 fn decrease_bullets(mut query: Query<(&PlayerState, &mut Bullets), With<Player>>) {
     for (player_state, mut bullets) in &mut query {
         if player_state.0 == PlayerStates::Attacking {
-            bullets.value -= 1
+            bullets.value = bullets.value.checked_sub(1).unwrap_or(0)
+        }
+    }
+}
+
+fn damage_reset(mut query: Query<(&mut Damage, &PlayerState), With<Player>>) {
+    for (mut damage, player_state) in &mut query {
+        if player_state.0 == PlayerStates::Attacking {
+            damage.value = DEFAULT_DAMAGE;
+        }
+    }
+}
+
+fn luck_reset(mut query: Query<(&mut Luck, &PlayerState), With<Player>>) {
+    for (mut luck, player_state) in &mut query {
+        if player_state.0 != PlayerStates::Buffing {
+            luck.value = DEFAULT_LUCK;
+        }
+    }
+}
+
+fn marksmanship_reset(mut query: Query<(&mut Marksmanship, &PlayerState), With<Player>>) {
+    for (mut marksmanship, player_state) in &mut query {
+        if player_state.0 != PlayerStates::Buffing {
+            marksmanship.value = N_FACETED_DICE;
         }
     }
 }
@@ -1410,6 +1738,7 @@ fn spawn_winner_text(
                 ..default()
             },
             BackgroundColor(Color::srgba(25., 0., 255., 0.5)),
+            InGameEntity,
         ));
 
         match ev.state {
@@ -1422,6 +1751,7 @@ fn spawn_winner_text(
                     Text::new(format!("Player {} won", ev.player.unwrap())),
                     TextLayout::new_with_justify(JustifyText::Center),
                     TextFont::from_font_size(125.),
+                    InGameEntity,
                 ));
             }
             GameOvers::Tie => {
@@ -1433,8 +1763,20 @@ fn spawn_winner_text(
                     Text::new("It's a tie!"),
                     TextLayout::new_with_justify(JustifyText::Center),
                     TextFont::from_font_size(125.),
+                    InGameEntity,
                 ));
             }
+        }
+    }
+}
+
+fn wait_for_input_to_exit_game(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut next_app_state: ResMut<NextState<AppStates>>,
+) {
+    for key in keys.get_just_pressed() {
+        if *key == KeyCode::Enter {
+            next_app_state.set(AppStates::Menu);
         }
     }
 }
