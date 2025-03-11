@@ -191,7 +191,6 @@ enum GameOvers {
 #[derive(PartialEq, Clone, Copy, Debug)]
 enum Buffes {
     GoldenBulletBuff,
-    DoubleDamageBuff,
     IncreaseDamageBuff,
     HealBuff,
     SuperHealBuff,
@@ -201,15 +200,14 @@ enum Buffes {
 
 impl Distribution<Buffes> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Buffes {
-        let index = rng.random_range(0..=6);
+        let index = rng.random_range(0..=5);
         match index {
             0 => Buffes::GoldenBulletBuff,
-            1 => Buffes::DoubleDamageBuff,
-            2 => Buffes::IncreaseDamageBuff,
-            3 => Buffes::HealBuff,
-            4 => Buffes::SuperHealBuff,
-            5 => Buffes::LuckBuff,
-            6 => Buffes::MarksmanshipBuff,
+            1 => Buffes::IncreaseDamageBuff,
+            2 => Buffes::HealBuff,
+            3 => Buffes::SuperHealBuff,
+            4 => Buffes::LuckBuff,
+            5 => Buffes::MarksmanshipBuff,
             _ => unreachable!(),
         }
     }
@@ -233,7 +231,6 @@ enum PlayStates {
 enum AppStates {
     InGame,
     Menu,
-    // Paused,
 }
 
 // Resources
@@ -295,7 +292,6 @@ impl Plugin for HitAKeyPlugin {
         app.add_systems(
             OnEnter(AppStates::InGame),
             (
-                launch_game,
                 spawn_players,
                 (
                     spawn_play_state_text,
@@ -305,6 +301,7 @@ impl Plugin for HitAKeyPlugin {
                     spawn_bullet_text,
                     spawn_dodge_text,
                 ),
+                launch_game,
             )
                 .chain(),
         );
@@ -342,7 +339,6 @@ impl Plugin for HitAKeyPlugin {
                         golden_bullet_buff,
                         heal_buff,
                         super_heal_buff,
-                        double_damage_buff,
                         luck_buff,
                         marksmanship_buff,
                     ),
@@ -439,7 +435,15 @@ impl Plugin for HitAKeyPlugin {
 // Systems
 // ================================================================
 
-fn clean_in_game(mut commands: Commands, query: Query<Entity, With<InGameEntity>>) {
+fn clean_in_game(
+    mut commands: Commands,
+    mut rounds: ResMut<RoundCounter>,
+    mut game_over: ResMut<GameOver>,
+    query: Query<Entity, With<InGameEntity>>,
+) {
+    rounds.0 = 1; // reset rounds
+    game_over.0 = false; // reset game_over
+
     for entity in &query {
         commands.entity(entity).despawn()
     }
@@ -1162,90 +1166,130 @@ fn remove_buffes(mut query: Query<&mut Buff, With<Player>>) {
 }
 
 fn increase_damage_buff(
-    mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &mut Bullets), With<Player>>,
+    mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &mut Bullets, &Player), With<Player>>,
+    mut ev_tick_player: EventWriter<TickPlayerEvent>,
 ) {
-    for (&buff, mut damage, mut player_state, mut bullets) in &mut query {
+    for (&buff, mut damage, mut player_state, mut bullets, player) in &mut query {
         if let Some(buff_value) = buff.value {
             if buff_value == Buffes::IncreaseDamageBuff {
                 damage.value += 1;
                 bullets.value += 1;
                 player_state.0 = PlayerStates::Attacking;
-            }
-        }
-    }
-}
 
-fn double_damage_buff(
-    mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &mut Bullets), With<Player>>,
-) {
-    for (&buff, mut damage, mut player_state, mut bullets) in &mut query {
-        if let Some(buff_value) = buff.value {
-            if buff_value == Buffes::DoubleDamageBuff {
-                damage.value *= 2;
-                bullets.value += 1;
-                player_state.0 = PlayerStates::Attacking;
+                ev_tick_player.send(TickPlayerEvent {
+                    player: player.value,
+                    value: "Double shot".into(),
+                });
             }
         }
     }
 }
 
 fn golden_bullet_buff(
-    mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &mut Bullets), With<Player>>,
+    mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &mut Bullets, &Player), With<Player>>,
+    mut ev_tick_player: EventWriter<TickPlayerEvent>,
 ) {
-    for (&buff, mut damage, mut player_state, mut bullets) in &mut query {
+    for (&buff, mut damage, mut player_state, mut bullets, player) in &mut query {
         if let Some(buff_value) = buff.value {
             if buff_value == Buffes::GoldenBulletBuff {
                 damage.value = 5;
                 bullets.value += 1;
                 player_state.0 = PlayerStates::Attacking;
+
+                ev_tick_player.send(TickPlayerEvent {
+                    player: player.value,
+                    value: "Golden bullet".into(),
+                });
             }
         }
     }
 }
 
-fn heal_buff(mut query: Query<(&Buff, &mut Health), With<Player>>) {
-    for (&buff, mut health) in &mut query {
+fn heal_buff(
+    mut query: Query<(&Buff, &mut Health, &Player), With<Player>>,
+    mut ev_tick_player: EventWriter<TickPlayerEvent>,
+) {
+    for (&buff, mut health, player) in &mut query {
         if let Some(buff_value) = buff.value {
             if buff_value == Buffes::HealBuff {
                 if health.value < DEFAULT_HEALTH {
                     health.value += 1;
+
+                    ev_tick_player.send(TickPlayerEvent {
+                        player: player.value,
+                        value: "Healing".into(),
+                    });
                 } else {
-                    health.value = DEFAULT_HEALTH
+                    health.value = DEFAULT_HEALTH;
+
+                    ev_tick_player.send(TickPlayerEvent {
+                        player: player.value,
+                        value: "Maxed HP".into(),
+                    });
                 }
             }
         }
     }
 }
 
-fn super_heal_buff(mut query: Query<(&Buff, &mut Health), With<Player>>) {
-    for (&buff, mut health) in &mut query {
+fn super_heal_buff(
+    mut query: Query<(&Buff, &mut Health, &Player), With<Player>>,
+    mut ev_tick_player: EventWriter<TickPlayerEvent>,
+) {
+    for (&buff, mut health, player) in &mut query {
         if let Some(buff_value) = buff.value {
             if buff_value == Buffes::SuperHealBuff {
                 if health.value < DEFAULT_HEALTH - 1 {
                     health.value += 2;
+
+                    ev_tick_player.send(TickPlayerEvent {
+                        player: player.value,
+                        value: "Super healing".into(),
+                    });
                 } else {
-                    health.value = DEFAULT_HEALTH
+                    health.value = DEFAULT_HEALTH;
+
+                    ev_tick_player.send(TickPlayerEvent {
+                        player: player.value,
+                        value: "Maxed HP".into(),
+                    });
                 }
             }
         }
     }
 }
 
-fn luck_buff(mut query: Query<(&Buff, &mut Luck), With<Player>>) {
-    for (&buff, mut luck) in &mut query {
+fn luck_buff(
+    mut query: Query<(&Buff, &mut Luck, &Player), With<Player>>,
+    mut ev_tick_player: EventWriter<TickPlayerEvent>,
+) {
+    for (&buff, mut luck, player) in &mut query {
         if let Some(buff_value) = buff.value {
             if buff_value == Buffes::LuckBuff {
                 luck.value += 50;
+
+                ev_tick_player.send(TickPlayerEvent {
+                    player: player.value,
+                    value: "Lucky charm".into(),
+                });
             }
         }
     }
 }
 
-fn marksmanship_buff(mut query: Query<(&Buff, &mut Marksmanship), With<Player>>) {
-    for (&buff, mut marksmanship) in &mut query {
+fn marksmanship_buff(
+    mut query: Query<(&Buff, &mut Marksmanship, &Player), With<Player>>,
+    mut ev_tick_player: EventWriter<TickPlayerEvent>,
+) {
+    for (&buff, mut marksmanship, player) in &mut query {
         if let Some(buff_value) = buff.value {
             if buff_value == Buffes::MarksmanshipBuff {
                 marksmanship.value += 50;
+
+                ev_tick_player.send(TickPlayerEvent {
+                    player: player.value,
+                    value: "Sharpshooter".into(),
+                });
             }
         }
     }
@@ -1539,7 +1583,6 @@ fn check_if_dead(
 
     match dead {
         [true, true] => {
-            println!("Both players shot themselves to death.");
             ev_game_over.send(GameOverEvent {
                 player: None,
                 state: GameOvers::Tie,
@@ -1547,7 +1590,6 @@ fn check_if_dead(
             game_over.0 = true;
         }
         [true, false] => {
-            println!("Player 1 is dead.");
             ev_game_over.send(GameOverEvent {
                 player: Some(2),
                 state: GameOvers::Winner,
@@ -1555,16 +1597,13 @@ fn check_if_dead(
             game_over.0 = true;
         }
         [false, true] => {
-            println!("Player 2 is dead.");
             ev_game_over.send(GameOverEvent {
                 player: Some(1),
                 state: GameOvers::Winner,
             });
             game_over.0 = true;
         }
-        [false, false] => {
-            println!("Both players still alive.");
-        }
+        [false, false] => {}
     }
 }
 
@@ -1596,15 +1635,11 @@ fn check_if_out_of_ammo(
             }
 
             if winner.is_some() {
-                println!("Player {} has highest score!", winner.unwrap());
-
                 ev_game_over.send(GameOverEvent {
                     player: winner,
                     state: GameOvers::Winner,
                 });
             } else {
-                println!("Both players have same score.");
-
                 ev_game_over.send(GameOverEvent {
                     player: None,
                     state: GameOvers::Tie,
@@ -1639,15 +1674,11 @@ fn check_if_no_more_rounds(
             }
 
             if winner.is_some() {
-                println!("Player {} has highest score!", winner.unwrap());
-
                 ev_game_over.send(GameOverEvent {
                     player: winner,
                     state: GameOvers::Winner,
                 });
             } else {
-                println!("Both players have same score.");
-
                 ev_game_over.send(GameOverEvent {
                     player: None,
                     state: GameOvers::Tie,
