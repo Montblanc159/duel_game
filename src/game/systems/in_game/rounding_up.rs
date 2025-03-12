@@ -1,6 +1,6 @@
 use super::*;
 
-pub fn prepare_player_for_next_round(
+fn prepare_player_for_next_round(
     mut query: Query<&mut PlayerState, With<Player>>,
     mut ev_change_player_state: EventWriter<PlayerStateChangeEvent>,
 ) {
@@ -10,11 +10,11 @@ pub fn prepare_player_for_next_round(
     }
 }
 
-pub fn is_not_game_over(game_over: Res<GameOver>) -> bool {
+fn is_not_game_over(game_over: Res<GameOver>) -> bool {
     !game_over.0
 }
 
-pub fn check_if_dead(
+fn check_if_dead(
     mut ev_game_over: EventWriter<GameOverEvent>,
     mut query: Query<(&Health, &Player)>,
     mut game_over: ResMut<GameOver>,
@@ -54,7 +54,7 @@ pub fn check_if_dead(
     }
 }
 
-pub fn check_if_out_of_ammo(
+fn check_if_out_of_ammo(
     mut ev_game_over: EventWriter<GameOverEvent>,
     mut query: Query<(&Bullets, &Health, &Player)>,
     mut game_over: ResMut<GameOver>,
@@ -96,7 +96,7 @@ pub fn check_if_out_of_ammo(
     }
 }
 
-pub fn check_if_no_more_rounds(
+fn check_if_no_more_rounds(
     mut ev_game_over: EventWriter<GameOverEvent>,
     mut query: Query<(&Health, &Player)>,
     mut game_over: ResMut<GameOver>,
@@ -135,7 +135,7 @@ pub fn check_if_no_more_rounds(
     }
 }
 
-pub fn restore_dodge(
+fn restore_dodge(
     round_counter: Res<RoundCounter>,
     mut query: Query<(&mut Dodges, &Luck, &Player), With<Player>>,
     mut ev_tick_player: EventWriter<TickPlayerEvent>,
@@ -158,7 +158,7 @@ pub fn restore_dodge(
     }
 }
 
-pub fn restore_bullet(
+fn restore_bullet(
     round_counter: Res<RoundCounter>,
     mut query: Query<(&mut Bullets, &Luck, &Player), With<Player>>,
     mut ev_tick_player: EventWriter<TickPlayerEvent>,
@@ -181,7 +181,7 @@ pub fn restore_bullet(
     }
 }
 
-pub fn check_rounding_up_phase_ended(query: Query<&TextColor, With<PlayerTickText>>) -> bool {
+fn check_rounding_up_phase_ended(query: Query<&TextColor, With<PlayerTickText>>) -> bool {
     let mut conditions: Vec<bool> = vec![];
 
     for color in &query {
@@ -191,6 +191,44 @@ pub fn check_rounding_up_phase_ended(query: Query<&TextColor, With<PlayerTickTex
     conditions.iter().all(|condition| *condition)
 }
 
-pub fn increase_round_counter(mut round_counter: ResMut<RoundCounter>) {
+fn increase_round_counter(mut round_counter: ResMut<RoundCounter>) {
     round_counter.0 += 1;
+}
+
+pub fn plugin(app: &mut App) {
+    app.add_systems(
+        OnEnter(PlayStates::RoundingUp),
+        (
+            check_if_dead,
+            check_if_no_more_rounds.run_if(is_not_game_over),
+            check_if_out_of_ammo.run_if(is_not_game_over),
+            restore_bullet.run_if(is_not_game_over),
+            restore_dodge.run_if(is_not_game_over),
+        )
+            .chain(),
+    );
+
+    app.add_systems(
+        Update,
+        (
+            listen_spawn_player_tick_ui,
+            animate_player_tick_text_opacity,
+            animate_player_tick_font_size,
+            (next_play_state).run_if(check_rounding_up_phase_ended),
+        )
+            .run_if(in_state(PlayStates::RoundingUp))
+            .run_if(is_not_game_over)
+            .chain()
+            .run_if(in_state(AppStates::InGame)),
+    );
+
+    app.add_systems(
+        OnExit(PlayStates::RoundingUp),
+        (
+            prepare_player_for_next_round,
+            increase_round_counter,
+            despawn_player_tick_ui,
+        )
+            .run_if(is_not_game_over),
+    );
 }

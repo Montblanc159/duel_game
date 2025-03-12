@@ -1,6 +1,6 @@
 use super::*;
 
-pub fn betting_countdown(
+fn betting_countdown(
     play_state: Res<State<PlayStates>>,
     mut next_play_state: ResMut<NextState<PlayStates>>,
     time: Res<Time>,
@@ -13,11 +13,11 @@ pub fn betting_countdown(
     }
 }
 
-pub fn reset_betting_timer(mut betting_timer: ResMut<BettingTimer>) {
+fn reset_betting_timer(mut betting_timer: ResMut<BettingTimer>) {
     betting_timer.0.reset()
 }
 
-pub fn set_player_state(
+fn set_player_state(
     mut query: Query<(&KeyAssignment, &mut PlayerState, &Dodges, &Bullets)>,
     mut ev_change_player_state: EventWriter<PlayerStateChangeEvent>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -51,32 +51,7 @@ pub fn set_player_state(
     }
 }
 
-#[derive(PartialEq, Clone, Copy, Debug)]
-pub enum Buffes {
-    GoldenBulletBuff,
-    IncreaseDamageBuff,
-    HealBuff,
-    SuperHealBuff,
-    LuckBuff,
-    MarksmanshipBuff,
-}
-
-impl Distribution<Buffes> for StandardUniform {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Buffes {
-        let index = rng.random_range(0..=5);
-        match index {
-            0 => Buffes::GoldenBulletBuff,
-            1 => Buffes::IncreaseDamageBuff,
-            2 => Buffes::HealBuff,
-            3 => Buffes::SuperHealBuff,
-            4 => Buffes::LuckBuff,
-            5 => Buffes::MarksmanshipBuff,
-            _ => unreachable!(),
-        }
-    }
-}
-
-pub fn add_buffes(mut query: Query<(&mut Buff, &PlayerState), With<Player>>) {
+fn add_buffes(mut query: Query<(&mut Buff, &PlayerState), With<Player>>) {
     for (mut buff, player_state) in &mut query {
         if player_state.0 == PlayerStates::Buffing {
             let random_buff: Buffes = rand::random();
@@ -85,13 +60,7 @@ pub fn add_buffes(mut query: Query<(&mut Buff, &PlayerState), With<Player>>) {
     }
 }
 
-pub fn remove_buffes(mut query: Query<&mut Buff, With<Player>>) {
-    for mut buff in &mut query {
-        buff.value = None;
-    }
-}
-
-pub fn increase_damage_buff(
+fn increase_damage_buff(
     mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &mut Bullets, &Player), With<Player>>,
     mut ev_tick_player: EventWriter<TickPlayerEvent>,
 ) {
@@ -111,7 +80,7 @@ pub fn increase_damage_buff(
     }
 }
 
-pub fn golden_bullet_buff(
+fn golden_bullet_buff(
     mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &mut Bullets, &Player), With<Player>>,
     mut ev_tick_player: EventWriter<TickPlayerEvent>,
 ) {
@@ -131,7 +100,7 @@ pub fn golden_bullet_buff(
     }
 }
 
-pub fn heal_buff(
+fn heal_buff(
     mut query: Query<(&Buff, &mut Health, &Player), With<Player>>,
     mut ev_tick_player: EventWriter<TickPlayerEvent>,
 ) {
@@ -158,7 +127,7 @@ pub fn heal_buff(
     }
 }
 
-pub fn super_heal_buff(
+fn super_heal_buff(
     mut query: Query<(&Buff, &mut Health, &Player), With<Player>>,
     mut ev_tick_player: EventWriter<TickPlayerEvent>,
 ) {
@@ -185,7 +154,7 @@ pub fn super_heal_buff(
     }
 }
 
-pub fn luck_buff(
+fn luck_buff(
     mut query: Query<(&Buff, &mut Luck, &Player), With<Player>>,
     mut ev_tick_player: EventWriter<TickPlayerEvent>,
 ) {
@@ -203,7 +172,7 @@ pub fn luck_buff(
     }
 }
 
-pub fn marksmanship_buff(
+fn marksmanship_buff(
     mut query: Query<(&Buff, &mut Marksmanship, &Player), With<Player>>,
     mut ev_tick_player: EventWriter<TickPlayerEvent>,
 ) {
@@ -221,7 +190,7 @@ pub fn marksmanship_buff(
     }
 }
 
-pub fn spawn_buff_text(
+fn spawn_buff_text(
     mut commands: Commands,
     window_query: Query<&Window>,
     query: Query<(&Player, &PlayerState, &Buff), With<Player>>,
@@ -264,26 +233,46 @@ pub fn spawn_buff_text(
     }
 }
 
-pub fn despawn_buff_text(
-    mut commands: Commands,
-    query: Query<(Entity, &BuffText), With<BuffText>>,
-    query_player: Query<(&Player, &Buff)>,
-) {
-    for (entity, buff_text) in &query {
-        for (player, buff) in &query_player {
-            if player.value == buff_text.value && buff.value.is_none() {
-                commands.entity(entity).despawn();
-            }
-        }
-    }
-}
-
 // UI
-pub fn update_betting_timer_ui(
+fn update_betting_timer_ui(
     betting_timer: Res<BettingTimer>,
     mut query: Query<&mut Text, With<TimerUIText>>,
 ) {
     for mut text in &mut query {
         **text = format!("{}", betting_timer.0.remaining_secs().round());
     }
+}
+
+pub fn plugin(app: &mut App) {
+    app.add_systems(
+        OnEnter(PlayStates::Betting),
+        (reset_betting_timer, spawn_timer_ui).chain(),
+    );
+
+    app.add_systems(
+        Update,
+        (betting_countdown, set_player_state, update_betting_timer_ui)
+            .run_if(in_state(PlayStates::Betting))
+            .run_if(in_state(AppStates::InGame)),
+    );
+
+    app.add_systems(
+        OnExit(PlayStates::Betting),
+        (
+            despawn_timer_ui,
+            (
+                add_buffes,
+                spawn_buff_text,
+                (
+                    increase_damage_buff,
+                    golden_bullet_buff,
+                    heal_buff,
+                    super_heal_buff,
+                    luck_buff,
+                    marksmanship_buff,
+                ),
+            )
+                .chain(),
+        ),
+    );
 }

@@ -111,6 +111,31 @@ impl Default for Damage {
     }
 }
 
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum Buffes {
+    GoldenBulletBuff,
+    IncreaseDamageBuff,
+    HealBuff,
+    SuperHealBuff,
+    LuckBuff,
+    MarksmanshipBuff,
+}
+
+impl Distribution<Buffes> for StandardUniform {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Buffes {
+        let index = rng.random_range(0..=5);
+        match index {
+            0 => Buffes::GoldenBulletBuff,
+            1 => Buffes::IncreaseDamageBuff,
+            2 => Buffes::HealBuff,
+            3 => Buffes::SuperHealBuff,
+            4 => Buffes::LuckBuff,
+            5 => Buffes::MarksmanshipBuff,
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[derive(Component, Clone, Copy)]
 pub struct Buff {
     pub value: Option<Buffes>,

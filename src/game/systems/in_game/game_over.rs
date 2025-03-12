@@ -1,6 +1,6 @@
 use super::*;
 
-pub fn spawn_winner_text(
+fn spawn_winner_text(
     mut ev_game_over: EventReader<GameOverEvent>,
     mut commands: Commands,
     query: Query<&Window>,
@@ -50,7 +50,7 @@ pub fn spawn_winner_text(
     }
 }
 
-pub fn wait_for_input_to_exit_game(
+fn wait_for_input_to_exit_game(
     keys: Res<ButtonInput<KeyCode>>,
     mut next_app_state: ResMut<NextState<AppStates>>,
 ) {
@@ -59,4 +59,16 @@ pub fn wait_for_input_to_exit_game(
             next_app_state.set(AppStates::Menu);
         }
     }
+}
+
+pub fn plugin(app: &mut App) {
+    app.add_systems(OnEnter(PlayStates::GameOver), spawn_winner_text);
+    // app.add_systems(OnExit(PlayStates::GameOver));
+
+    app.add_systems(
+        Update,
+        wait_for_input_to_exit_game
+            .run_if(in_state(PlayStates::GameOver))
+            .run_if(in_state(AppStates::InGame)),
+    );
 }

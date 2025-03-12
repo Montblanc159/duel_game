@@ -1,6 +1,6 @@
 use super::*;
 
-pub fn spawn_press_spacebar_ui(mut commands: Commands, query: Query<&Window>) {
+fn spawn_press_spacebar_ui(mut commands: Commands, query: Query<&Window>) {
     let window = query.single();
     let dimensions = [500., 50.];
 
@@ -25,7 +25,7 @@ pub fn spawn_press_spacebar_ui(mut commands: Commands, query: Query<&Window>) {
     ));
 }
 
-pub fn despawn_press_spacebar_ui(
+fn despawn_press_spacebar_ui(
     mut commands: Commands,
     query: Query<Entity, With<PressSpacebarText>>,
 ) {
@@ -34,10 +34,29 @@ pub fn despawn_press_spacebar_ui(
     }
 }
 
-pub fn check_if_last_round(round: Res<RoundCounter>, mut ev_last_round: EventWriter<AlertEvent>) {
+fn check_if_last_round(round: Res<RoundCounter>, mut ev_last_round: EventWriter<AlertEvent>) {
     if round.0 == N_MAX_ROUND {
         ev_last_round.send(AlertEvent {
             value: "Last round!".into(),
         });
     }
+}
+
+pub fn plugin(app: &mut App) {
+    app.add_systems(
+        OnEnter(PlayStates::Preparing),
+        (check_if_last_round, spawn_press_spacebar_ui),
+    );
+
+    app.add_systems(
+        Update,
+        wait_for_input_to_next_play_state
+            .run_if(in_state(PlayStates::Preparing))
+            .run_if(in_state(AppStates::InGame)),
+    );
+
+    app.add_systems(
+        OnExit(PlayStates::Preparing),
+        (despawn_press_spacebar_ui, despawn_alert_text),
+    );
 }

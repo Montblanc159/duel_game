@@ -8,28 +8,20 @@ pub mod paused;
 pub mod preparing;
 pub mod rounding_up;
 
-pub use betting::*;
-pub use countdown::*;
-pub use fighting::*;
-pub use game_over::*;
-// pub use paused::*;
-pub use preparing::*;
-pub use rounding_up::*;
-
-pub fn reset_game(mut rounds: ResMut<RoundCounter>, mut game_over: ResMut<GameOver>) {
+fn reset_game(mut rounds: ResMut<RoundCounter>, mut game_over: ResMut<GameOver>) {
     rounds.0 = 1; // reset rounds
     game_over.0 = false; // reset game_over
 }
 
-pub fn pause_game(mut next_play_state: ResMut<NextState<PlayStates>>) {
+fn pause_game(mut next_play_state: ResMut<NextState<PlayStates>>) {
     next_play_state.set(PlayStates::Paused);
 }
 
-pub fn launch_game(mut next_play_state: ResMut<NextState<PlayStates>>) {
+fn launch_game(mut next_play_state: ResMut<NextState<PlayStates>>) {
     next_play_state.set(PlayStates::Countdown);
 }
 
-pub fn listen_spawn_player_tick_ui(
+fn listen_spawn_player_tick_ui(
     mut commands: Commands,
     mut ev_tick_player: EventReader<TickPlayerEvent>,
     query: Query<(&Player, &Transform), With<Player>>,
@@ -71,13 +63,13 @@ pub fn listen_spawn_player_tick_ui(
     }
 }
 
-pub fn despawn_player_tick_ui(mut commands: Commands, query: Query<Entity, With<PlayerTickText>>) {
+fn despawn_player_tick_ui(mut commands: Commands, query: Query<Entity, With<PlayerTickText>>) {
     for entity in query.iter() {
         commands.entity(entity).despawn();
     }
 }
 
-pub fn animate_player_tick_text_opacity(
+fn animate_player_tick_text_opacity(
     mut colors: Query<&mut TextColor, With<PlayerTickText>>,
     time: Res<Time>,
 ) {
@@ -87,7 +79,7 @@ pub fn animate_player_tick_text_opacity(
     }
 }
 
-pub fn animate_player_tick_font_size(
+fn animate_player_tick_font_size(
     mut text_fonts: Query<&mut TextFont, With<PlayerTickText>>,
     time: Res<Time>,
 ) {
@@ -96,7 +88,7 @@ pub fn animate_player_tick_font_size(
     }
 }
 
-pub fn spawn_timer_ui(mut commands: Commands, window_query: Query<&Window>) {
+fn spawn_timer_ui(mut commands: Commands, window_query: Query<&Window>) {
     let window = window_query.single();
     let dimensions = [70., 70.];
 
@@ -123,13 +115,13 @@ pub fn spawn_timer_ui(mut commands: Commands, window_query: Query<&Window>) {
     ));
 }
 
-pub fn despawn_timer_ui(mut commands: Commands, query: Query<Entity, With<TimerUIText>>) {
+fn despawn_timer_ui(mut commands: Commands, query: Query<Entity, With<TimerUIText>>) {
     for entity in query.iter() {
         commands.entity(entity).despawn();
     }
 }
 
-pub fn spawn_players(
+fn spawn_players(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -155,7 +147,7 @@ pub fn spawn_players(
     ));
 }
 
-pub fn spawn_play_state_text(mut commands: Commands, query: Query<&Window>) {
+fn spawn_play_state_text(mut commands: Commands, query: Query<&Window>) {
     let window = query.single();
     let dimensions = [250., 50.];
 
@@ -180,7 +172,7 @@ pub fn spawn_play_state_text(mut commands: Commands, query: Query<&Window>) {
     ));
 }
 
-pub fn play_state_text_update(
+fn play_state_text_update(
     play_state: Res<State<PlayStates>>,
     mut query: Query<&mut Text, With<PlayStateText>>,
 ) {
@@ -189,7 +181,7 @@ pub fn play_state_text_update(
     }
 }
 
-pub fn spawn_round_number_text(mut commands: Commands, query: Query<&Window>) {
+fn spawn_round_number_text(mut commands: Commands, query: Query<&Window>) {
     let window = query.single();
     let dimensions = [250., 50.];
 
@@ -214,7 +206,7 @@ pub fn spawn_round_number_text(mut commands: Commands, query: Query<&Window>) {
     ));
 }
 
-pub fn round_number_text_update(
+fn round_number_text_update(
     round_counter: Res<RoundCounter>,
     mut query: Query<&mut Text, With<RoundNumberText>>,
 ) {
@@ -223,7 +215,7 @@ pub fn round_number_text_update(
     }
 }
 
-pub fn spawn_player_state_text(
+fn spawn_player_state_text(
     mut commands: Commands,
     window_query: Query<&Window>,
     query: Query<(&Transform, &PlayerState, &Player), With<Player>>,
@@ -260,7 +252,7 @@ pub fn spawn_player_state_text(
     }
 }
 
-pub fn player_state_text_update(
+fn player_state_text_update(
     mut ev_player_state: EventReader<PlayerStateChangeEvent>,
     mut query_ui: Query<(&mut Text, &PlayerStateText), With<PlayerStateText>>,
     query_state: Query<(&PlayerState, &Player), With<Player>>,
@@ -276,7 +268,7 @@ pub fn player_state_text_update(
     }
 }
 
-pub fn spawn_health_text(
+fn spawn_health_text(
     mut commands: Commands,
     window_query: Query<&Window>,
     query: Query<&Player, With<Player>>,
@@ -317,7 +309,7 @@ pub fn spawn_health_text(
     }
 }
 
-pub fn health_text_update(
+fn health_text_update(
     mut query_ui: Query<(&mut Text, &HealthText), With<HealthText>>,
     query_state: Query<(&Health, &Player), With<Player>>,
 ) {
@@ -330,7 +322,7 @@ pub fn health_text_update(
     }
 }
 
-pub fn spawn_bullet_text(
+fn spawn_bullet_text(
     mut commands: Commands,
     window_query: Query<&Window>,
     query: Query<&Player, With<Player>>,
@@ -371,7 +363,7 @@ pub fn spawn_bullet_text(
     }
 }
 
-pub fn bullet_text_update(
+fn bullet_text_update(
     mut query_ui: Query<(&mut Text, &BulletText), With<BulletText>>,
     query_state: Query<(&Bullets, &Player), With<Player>>,
 ) {
@@ -384,7 +376,7 @@ pub fn bullet_text_update(
     }
 }
 
-pub fn spawn_dodge_text(
+fn spawn_dodge_text(
     mut commands: Commands,
     window_query: Query<&Window>,
     query: Query<&Player, With<Player>>,
@@ -425,7 +417,7 @@ pub fn spawn_dodge_text(
     }
 }
 
-pub fn dodge_text_update(
+fn dodge_text_update(
     mut query_ui: Query<(&mut Text, &DodgeText), With<DodgeText>>,
     query_state: Query<(&Dodges, &Player), With<Player>>,
 ) {
@@ -438,14 +430,14 @@ pub fn dodge_text_update(
     }
 }
 
-pub fn next_play_state(
+fn next_play_state(
     play_state: Res<State<PlayStates>>,
     mut next_play_state: ResMut<NextState<PlayStates>>,
 ) {
     next_play_state.set(play_state.get().next());
 }
 
-pub fn wait_for_input_to_next_play_state(
+fn wait_for_input_to_next_play_state(
     keys: Res<ButtonInput<KeyCode>>,
     play_state: Res<State<PlayStates>>,
     mut next_play_state: ResMut<NextState<PlayStates>>,
@@ -457,7 +449,7 @@ pub fn wait_for_input_to_next_play_state(
     }
 }
 
-pub fn listen_game_overs(
+fn listen_game_overs(
     mut ev_game_over: EventReader<GameOverEvent>,
     mut next_play_state: ResMut<NextState<PlayStates>>,
 ) {
@@ -471,7 +463,7 @@ pub fn listen_game_overs(
     }
 }
 
-pub fn listen_spawn_alert_text(
+fn listen_spawn_alert_text(
     mut ev_alert: EventReader<AlertEvent>,
     window_query: Query<&Window>,
     mut commands: Commands,
@@ -504,8 +496,47 @@ pub fn listen_spawn_alert_text(
     }
 }
 
-pub fn despawn_alert_text(mut commands: Commands, query: Query<Entity, With<AlertText>>) {
+fn despawn_alert_text(mut commands: Commands, query: Query<Entity, With<AlertText>>) {
     for entity in &query {
         commands.entity(entity).despawn();
     }
+}
+
+pub fn plugin(app: &mut App) {
+    app.add_systems(
+        OnEnter(AppStates::InGame),
+        (
+            spawn_players,
+            (
+                spawn_play_state_text,
+                spawn_player_state_text,
+                spawn_round_number_text,
+                spawn_health_text,
+                spawn_bullet_text,
+                spawn_dodge_text,
+            ),
+            launch_game,
+        )
+            .chain(),
+    );
+
+    app.add_systems(
+        OnExit(AppStates::InGame),
+        (pause_game, reset_game, clean_system::<InGameEntity>).chain(),
+    );
+
+    app.add_systems(
+        Update,
+        (
+            listen_game_overs,
+            listen_spawn_alert_text,
+            player_state_text_update,
+            round_number_text_update,
+            play_state_text_update,
+            health_text_update,
+            bullet_text_update,
+            dodge_text_update,
+        )
+            .run_if(in_state(AppStates::InGame)),
+    );
 }

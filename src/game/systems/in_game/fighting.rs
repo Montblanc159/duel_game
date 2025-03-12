@@ -152,6 +152,26 @@ pub fn decrease_bullets(mut query: Query<(&PlayerState, &mut Bullets), With<Play
     }
 }
 
+fn remove_buffes(mut query: Query<&mut Buff, With<Player>>) {
+    for mut buff in &mut query {
+        buff.value = None;
+    }
+}
+
+fn despawn_buff_text(
+    mut commands: Commands,
+    query: Query<(Entity, &BuffText), With<BuffText>>,
+    query_player: Query<(&Player, &Buff)>,
+) {
+    for (entity, buff_text) in &query {
+        for (player, buff) in &query_player {
+            if player.value == buff_text.value && buff.value.is_none() {
+                commands.entity(entity).despawn();
+            }
+        }
+    }
+}
+
 pub fn damage_reset(mut query: Query<(&mut Damage, &PlayerState), With<Player>>) {
     for (mut damage, player_state) in &mut query {
         if player_state.0 == PlayerStates::Attacking {
@@ -188,4 +208,38 @@ pub fn check_fighting_phase_ended(query: Query<&TextColor, With<PlayerTickText>>
     }
 
     conditions.iter().all(|condition| *condition)
+}
+
+pub fn plugin(app: &mut App) {
+    app.add_systems(
+        OnEnter(PlayStates::Fighting),
+        (fight, decrease_bullets, decrease_dodges),
+    );
+
+    app.add_systems(
+        Update,
+        (
+            listen_damage_event,
+            listen_missed_event,
+            listen_dodged_event,
+            listen_spawn_player_tick_ui,
+            animate_player_tick_text_opacity,
+            animate_player_tick_font_size,
+            (next_play_state).run_if(check_fighting_phase_ended),
+        )
+            .run_if(in_state(PlayStates::Fighting))
+            .chain()
+            .run_if(in_state(AppStates::InGame)),
+    );
+
+    app.add_systems(
+        OnExit(PlayStates::Fighting),
+        (
+            (remove_buffes, despawn_buff_text).chain(),
+            damage_reset,
+            marksmanship_reset,
+            luck_reset,
+            despawn_player_tick_ui,
+        ),
+    );
 }

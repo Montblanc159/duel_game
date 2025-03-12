@@ -1,6 +1,6 @@
 use super::*;
 
-pub fn wait_for_input_to_start_game(
+fn wait_for_input_to_start_game(
     keys: Res<ButtonInput<KeyCode>>,
     mut next_app_state: ResMut<NextState<AppStates>>,
 ) {
@@ -11,7 +11,7 @@ pub fn wait_for_input_to_start_game(
     }
 }
 
-pub fn spawn_start_game_ui(mut commands: Commands, query: Query<&Window>) {
+fn spawn_start_game_ui(mut commands: Commands, query: Query<&Window>) {
     let window = query.single();
     // let dimensions = [window.width(), window.height()];
 
@@ -37,4 +37,15 @@ pub fn spawn_start_game_ui(mut commands: Commands, query: Query<&Window>) {
             TextFont::from_font_size(125.),
             MenuEntity,
         ));
+}
+
+pub fn plugin(app: &mut App) {
+    app.add_systems(OnEnter(AppStates::Menu), spawn_start_game_ui);
+
+    app.add_systems(
+        Update,
+        wait_for_input_to_start_game.run_if(in_state(AppStates::Menu)),
+    );
+
+    app.add_systems(OnExit(AppStates::Menu), clean_system::<MenuEntity>);
 }
