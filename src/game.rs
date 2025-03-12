@@ -23,35 +23,7 @@ use ui_defaults::*;
 // ================================================================
 
 pub(super) fn plugin(app: &mut App) {
-    app.init_state::<AppStates>();
-    app.init_state::<PlayStates>();
-
-    app.insert_resource(BettingTimer(Timer::from_seconds(
-        DEFAULT_BETTING_TIMER,
-        TimerMode::Once,
-    )));
-    app.insert_resource(CountdownTimer(Timer::from_seconds(
-        DEFAULT_COUNTDOWN_TIMER,
-        TimerMode::Once,
-    )));
-    app.insert_resource(RoundCounter(1));
-    app.insert_resource(GameOver(false));
-
-    app.add_event::<GameOverEvent>();
-    app.add_event::<PlayerStateChangeEvent>();
-    app.add_event::<DamageEvent>();
-    app.add_event::<MissedEvent>();
-    app.add_event::<DodgedEvent>();
-    app.add_event::<TickPlayerEvent>();
-    app.add_event::<AlertEvent>();
-
-    // app.add_systems(Startup, ...);
-
-    app.add_systems(OnExit(AppStates::Menu), clean_system::<MenuEntity>);
-    app.add_systems(
-        OnExit(AppStates::InGame),
-        (pause_game, reset_game, clean_system::<InGameEntity>).chain(),
-    );
+    app.add_plugins((events::plugin, resources::plugin, states::plugin));
 
     app.add_systems(OnEnter(AppStates::Menu), spawn_start_game_ui);
 
@@ -59,6 +31,8 @@ pub(super) fn plugin(app: &mut App) {
         Update,
         wait_for_input_to_start_game.run_if(in_state(AppStates::Menu)),
     );
+
+    app.add_systems(OnExit(AppStates::Menu), clean_system::<MenuEntity>);
 
     app.add_systems(
         OnEnter(AppStates::InGame),
@@ -78,9 +52,37 @@ pub(super) fn plugin(app: &mut App) {
     );
 
     app.add_systems(
+        OnExit(AppStates::InGame),
+        (pause_game, reset_game, clean_system::<InGameEntity>).chain(),
+    );
+
+    app.add_systems(
+        Update,
+        (
+            listen_game_overs,
+            listen_spawn_alert_text,
+            player_state_text_update,
+            round_number_text_update,
+            play_state_text_update,
+            health_text_update,
+            bullet_text_update,
+            dodge_text_update,
+        )
+            .run_if(in_state(AppStates::InGame)),
+    );
+
+    app.add_systems(
         OnEnter(PlayStates::Preparing),
         (check_if_last_round, spawn_press_spacebar_ui),
     );
+
+    app.add_systems(
+        Update,
+        wait_for_input_to_next_play_state
+            .run_if(in_state(PlayStates::Preparing))
+            .run_if(in_state(AppStates::InGame)),
+    );
+
     app.add_systems(
         OnExit(PlayStates::Preparing),
         (despawn_press_spacebar_ui, despawn_alert_text),
@@ -91,11 +93,26 @@ pub(super) fn plugin(app: &mut App) {
         (reset_countdown_timer, spawn_timer_ui).chain(),
     );
 
+    app.add_systems(
+        Update,
+        (countdown, update_countdown_timer_ui)
+            .chain()
+            .run_if(in_state(PlayStates::Countdown))
+            .run_if(in_state(AppStates::InGame)),
+    );
+
     app.add_systems(OnExit(PlayStates::Countdown), despawn_timer_ui);
 
     app.add_systems(
         OnEnter(PlayStates::Betting),
         (reset_betting_timer, spawn_timer_ui).chain(),
+    );
+
+    app.add_systems(
+        Update,
+        (betting_countdown, set_player_state, update_betting_timer_ui)
+            .run_if(in_state(PlayStates::Betting))
+            .run_if(in_state(AppStates::InGame)),
     );
 
     app.add_systems(
@@ -124,6 +141,22 @@ pub(super) fn plugin(app: &mut App) {
     );
 
     app.add_systems(
+        Update,
+        (
+            listen_damage_event,
+            listen_missed_event,
+            listen_dodged_event,
+            listen_spawn_player_tick_ui,
+            animate_player_tick_text_opacity,
+            animate_player_tick_font_size,
+            (next_play_state).run_if(check_fighting_phase_ended),
+        )
+            .run_if(in_state(PlayStates::Fighting))
+            .chain()
+            .run_if(in_state(AppStates::InGame)),
+    );
+
+    app.add_systems(
         OnExit(PlayStates::Fighting),
         (
             (remove_buffes, despawn_buff_text).chain(),
@@ -147,6 +180,20 @@ pub(super) fn plugin(app: &mut App) {
     );
 
     app.add_systems(
+        Update,
+        (
+            listen_spawn_player_tick_ui,
+            animate_player_tick_text_opacity,
+            animate_player_tick_font_size,
+            (next_play_state).run_if(check_rounding_up_phase_ended),
+        )
+            .run_if(in_state(PlayStates::RoundingUp))
+            .run_if(is_not_game_over)
+            .chain()
+            .run_if(in_state(AppStates::InGame)),
+    );
+
+    app.add_systems(
         OnExit(PlayStates::RoundingUp),
         (
             prepare_player_for_next_round,
@@ -161,43 +208,8 @@ pub(super) fn plugin(app: &mut App) {
 
     app.add_systems(
         Update,
-        (
-            listen_game_overs,
-            listen_spawn_alert_text,
-            player_state_text_update,
-            round_number_text_update,
-            play_state_text_update,
-            health_text_update,
-            bullet_text_update,
-            dodge_text_update,
-            wait_for_input_to_next_play_state.run_if(in_state(PlayStates::Preparing)),
-            (countdown, update_countdown_timer_ui)
-                .chain()
-                .run_if(in_state(PlayStates::Countdown)),
-            (betting_countdown, set_player_state, update_betting_timer_ui)
-                .run_if(in_state(PlayStates::Betting)),
-            (
-                listen_damage_event,
-                listen_missed_event,
-                listen_dodged_event,
-                listen_spawn_player_tick_ui,
-                animate_player_tick_text_opacity,
-                animate_player_tick_font_size,
-                (next_play_state).run_if(check_fighting_phase_ended),
-            )
-                .run_if(in_state(PlayStates::Fighting))
-                .chain(),
-            (
-                listen_spawn_player_tick_ui,
-                animate_player_tick_text_opacity,
-                animate_player_tick_font_size,
-                (next_play_state).run_if(check_rounding_up_phase_ended),
-            )
-                .run_if(in_state(PlayStates::RoundingUp))
-                .run_if(is_not_game_over)
-                .chain(),
-            wait_for_input_to_exit_game.run_if(in_state(PlayStates::GameOver)),
-        )
+        wait_for_input_to_exit_game
+            .run_if(in_state(PlayStates::GameOver))
             .run_if(in_state(AppStates::InGame)),
     );
 }

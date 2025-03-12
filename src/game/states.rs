@@ -31,3 +31,8 @@ pub enum AppStates {
     Menu,
     InGame,
 }
+
+pub(super) fn plugin(app: &mut App) {
+    app.init_state::<AppStates>();
+    app.init_state::<PlayStates>();
+}

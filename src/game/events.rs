@@ -41,3 +41,13 @@ pub struct TickPlayerEvent {
 pub struct AlertEvent {
     pub value: String,
 }
+
+pub(super) fn plugin(app: &mut App) {
+    app.add_event::<GameOverEvent>();
+    app.add_event::<PlayerStateChangeEvent>();
+    app.add_event::<DamageEvent>();
+    app.add_event::<MissedEvent>();
+    app.add_event::<DodgedEvent>();
+    app.add_event::<TickPlayerEvent>();
+    app.add_event::<AlertEvent>();
+}
