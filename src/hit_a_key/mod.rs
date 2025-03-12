@@ -1,3 +1,5 @@
+use std::ops::AddAssign;
+
 use bevy::prelude::*;
 use rand::{distr::StandardUniform, prelude::*};
 
@@ -15,7 +17,7 @@ const PLAYER_ONE_KEYS: [KeyCode; N_KEYS_PER_PLAYER] = PLAYER_KEY_ASSIGNMENTS[0];
 const PLAYER_TWO_KEYS: [KeyCode; N_KEYS_PER_PLAYER] = PLAYER_KEY_ASSIGNMENTS[1];
 const N_BULLETS: u8 = 2;
 const N_DODGES: u8 = 1;
-const N_FACETED_DICE: u8 = 100;
+const DEFAULT_MARKSMANSHIP: u8 = 100;
 const DEFAULT_LUCK: u8 = 50;
 const N_MAX_ROUND: u8 = 6;
 const DEFAULT_DAMAGE: u8 = 1;
@@ -37,6 +39,7 @@ struct InGameEntity;
 struct MenuEntity;
 
 #[derive(Component)]
+#[require(Health, Luck, Buff, Damage, Dodges, Bullets, Marksmanship)]
 struct Player {
     value: u8,
 }
@@ -46,14 +49,61 @@ struct Health {
     value: u8,
 }
 
+impl Default for Health {
+    fn default() -> Self {
+        Health {
+            value: DEFAULT_HEALTH,
+        }
+    }
+}
+
+struct Dice {
+    value: u8,
+}
+
+impl Dice {
+    fn roll(&self) -> u8 {
+        let mut rng = rand::rng();
+        let nums: Vec<u8> = (1..self.value).collect();
+
+        *nums.choose(&mut rng).unwrap()
+    }
+}
+
+impl AddAssign for Dice {
+    fn add_assign(&mut self, other: Self) {
+        self.value += other.value;
+    }
+}
+
 #[derive(Component)]
 struct Luck {
-    value: u8,
+    value: Dice,
+}
+
+impl Default for Luck {
+    fn default() -> Self {
+        Luck {
+            value: Dice {
+                value: DEFAULT_LUCK,
+            },
+        }
+    }
 }
 
 #[derive(Component)]
 struct Marksmanship {
-    value: u8,
+    value: Dice,
+}
+
+impl Default for Marksmanship {
+    fn default() -> Self {
+        Marksmanship {
+            value: Dice {
+                value: DEFAULT_MARKSMANSHIP,
+            },
+        }
+    }
 }
 
 #[derive(Component)]
@@ -61,9 +111,21 @@ struct Dodges {
     value: u8,
 }
 
+impl Default for Dodges {
+    fn default() -> Self {
+        Dodges { value: N_DODGES }
+    }
+}
+
 #[derive(Component)]
 struct Bullets {
     value: u8,
+}
+
+impl Default for Bullets {
+    fn default() -> Self {
+        Bullets { value: N_BULLETS }
+    }
 }
 
 #[derive(Component)]
@@ -71,16 +133,44 @@ struct Damage {
     value: u8,
 }
 
+impl Default for Damage {
+    fn default() -> Self {
+        Damage {
+            value: DEFAULT_DAMAGE,
+        }
+    }
+}
+
 #[derive(Component, Clone, Copy)]
 struct Buff {
     value: Option<Buffes>,
 }
 
-#[derive(Component, Debug)]
+impl Default for Buff {
+    fn default() -> Self {
+        Buff { value: None }
+    }
+}
+
+#[derive(Component, Debug, Default)]
 struct PlayerState(PlayerStates);
 
 #[derive(Component)]
 struct KeyAssignment([KeyCode; N_KEYS_PER_PLAYER]);
+
+impl KeyAssignment {
+    fn derive_player_state(&self, key: &KeyCode) -> Option<PlayerStates> {
+        if *key == self.0[0] {
+            Some(PlayerStates::Attacking)
+        } else if *key == self.0[1] {
+            Some(PlayerStates::Dodging)
+        } else if *key == self.0[2] {
+            Some(PlayerStates::Buffing)
+        } else {
+            None
+        }
+    }
+}
 
 // UI components
 
@@ -119,15 +209,12 @@ struct DodgeText {
 struct TimerUIText;
 
 #[derive(Component)]
-
 struct PressSpacebarText;
 
 #[derive(Component)]
-
 struct PlayerTickText;
 
 #[derive(Component)]
-
 struct AlertText;
 
 // Events
@@ -172,8 +259,9 @@ struct AlertEvent {
 // Enums
 // ================================================================
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 enum PlayerStates {
+    #[default]
     Idle,
     Attacking,
     NotAttacking,
@@ -216,21 +304,36 @@ impl Distribution<Buffes> for StandardUniform {
 // States
 // ================================================================
 
-#[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 enum PlayStates {
+    #[default]
+    Paused,
     Preparing,
     Countdown,
     Betting,
     Fighting,
     RoundingUp,
     GameOver,
-    Paused,
 }
 
-#[derive(States, Debug, Clone, PartialEq, Eq, Hash)]
+impl PlayStates {
+    fn next(&self) -> Self {
+        match *self {
+            PlayStates::Preparing => PlayStates::Countdown,
+            PlayStates::Countdown => PlayStates::Betting,
+            PlayStates::Betting => PlayStates::Fighting,
+            PlayStates::Fighting => PlayStates::RoundingUp,
+            PlayStates::RoundingUp => PlayStates::Preparing,
+            _ => *self,
+        }
+    }
+}
+
+#[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
 enum AppStates {
-    InGame,
+    #[default]
     Menu,
+    InGame,
 }
 
 // Resources
@@ -252,8 +355,8 @@ struct GameOver(bool);
 
 impl Plugin for HitAKeyPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_state(AppStates::Menu);
-        app.insert_state(PlayStates::Paused);
+        app.init_state::<AppStates>();
+        app.init_state::<PlayStates>();
 
         app.insert_resource(BettingTimer(Timer::from_seconds(
             DEFAULT_BETTING_TIMER,
@@ -276,10 +379,10 @@ impl Plugin for HitAKeyPlugin {
 
         app.add_systems(Startup, spawn_camera);
 
-        app.add_systems(OnExit(AppStates::Menu), clean_menu);
+        app.add_systems(OnExit(AppStates::Menu), clean_system::<MenuEntity>);
         app.add_systems(
             OnExit(AppStates::InGame),
-            (pause_game, clean_in_game).chain(),
+            (pause_game, reset_game, clean_system::<InGameEntity>).chain(),
         );
 
         app.add_systems(OnEnter(AppStates::Menu), spawn_start_game_ui);
@@ -435,23 +538,14 @@ impl Plugin for HitAKeyPlugin {
 // Systems
 // ================================================================
 
-fn clean_in_game(
-    mut commands: Commands,
-    mut rounds: ResMut<RoundCounter>,
-    mut game_over: ResMut<GameOver>,
-    query: Query<Entity, With<InGameEntity>>,
-) {
+fn reset_game(mut rounds: ResMut<RoundCounter>, mut game_over: ResMut<GameOver>) {
     rounds.0 = 1; // reset rounds
     game_over.0 = false; // reset game_over
-
-    for entity in &query {
-        commands.entity(entity).despawn()
-    }
 }
 
-fn clean_menu(mut commands: Commands, query: Query<Entity, With<MenuEntity>>) {
+fn clean_system<T: Component>(mut commands: Commands, query: Query<Entity, With<T>>) {
     for entity in &query {
-        commands.entity(entity).despawn()
+        commands.entity(entity).despawn_recursive()
     }
 }
 
@@ -617,21 +711,6 @@ fn spawn_players(
 ) {
     commands.spawn((
         Player { value: 1 },
-        Health {
-            value: DEFAULT_HEALTH,
-        },
-        Luck {
-            value: DEFAULT_LUCK,
-        },
-        Damage {
-            value: DEFAULT_DAMAGE,
-        },
-        Marksmanship {
-            value: N_FACETED_DICE,
-        },
-        Dodges { value: N_DODGES },
-        Bullets { value: N_BULLETS },
-        Buff { value: None },
         KeyAssignment(PLAYER_ONE_KEYS),
         PlayerState(PlayerStates::Idle),
         Mesh2d(meshes.add(Circle::new(50.0))),
@@ -642,21 +721,6 @@ fn spawn_players(
 
     commands.spawn((
         Player { value: 2 },
-        Health {
-            value: DEFAULT_HEALTH,
-        },
-        Luck {
-            value: DEFAULT_LUCK,
-        },
-        Damage {
-            value: DEFAULT_DAMAGE,
-        },
-        Marksmanship {
-            value: N_FACETED_DICE,
-        },
-        Dodges { value: N_DODGES },
-        Bullets { value: N_BULLETS },
-        Buff { value: None },
         KeyAssignment(PLAYER_TWO_KEYS),
         PlayerState(PlayerStates::Idle),
         Mesh2d(meshes.add(Circle::new(50.0))),
@@ -953,7 +1017,7 @@ fn next_play_state(
     play_state: Res<State<PlayStates>>,
     mut next_play_state: ResMut<NextState<PlayStates>>,
 ) {
-    next_play_state.set(play_state_transitions(*play_state.get()));
+    next_play_state.set(play_state.get().next());
 }
 
 fn wait_for_input_to_next_play_state(
@@ -963,7 +1027,7 @@ fn wait_for_input_to_next_play_state(
 ) {
     for key in keys.get_just_pressed() {
         if *key == KeyCode::Space {
-            next_play_state.set(play_state_transitions(*play_state.get()));
+            next_play_state.set(play_state.get().next());
         }
     }
 }
@@ -1078,7 +1142,7 @@ fn countdown(
     countdown_timer.0.tick(time.delta());
 
     if countdown_timer.0.just_finished() {
-        next_play_state.set(play_state_transitions(*play_state.get()));
+        next_play_state.set(play_state.get().next());
         countdown_timer.0.reset()
     }
 }
@@ -1109,7 +1173,7 @@ fn betting_countdown(
     betting_timer.0.tick(time.delta());
 
     if betting_timer.0.just_finished() {
-        next_play_state.set(play_state_transitions(*play_state.get()));
+        next_play_state.set(play_state.get().next());
     }
 }
 
@@ -1124,8 +1188,9 @@ fn set_player_state(
 ) {
     for key in keys.get_just_pressed() {
         for (key_assignements, mut player_state, dodges, bullets) in &mut query {
-            let requested_state =
-                key_to_player_state(&key_assignements.0, key).unwrap_or(player_state.0);
+            let requested_state = key_assignements
+                .derive_player_state(key)
+                .unwrap_or(player_state.0);
 
             ev_change_player_state.send(PlayerStateChangeEvent);
 
@@ -1266,7 +1331,7 @@ fn luck_buff(
     for (&buff, mut luck, player) in &mut query {
         if let Some(buff_value) = buff.value {
             if buff_value == Buffes::LuckBuff {
-                luck.value += 50;
+                luck.value += Dice { value: 50 };
 
                 ev_tick_player.send(TickPlayerEvent {
                     player: player.value,
@@ -1284,7 +1349,7 @@ fn marksmanship_buff(
     for (&buff, mut marksmanship, player) in &mut query {
         if let Some(buff_value) = buff.value {
             if buff_value == Buffes::MarksmanshipBuff {
-                marksmanship.value += 50;
+                marksmanship.value += Dice { value: 50 };
 
                 ev_tick_player.send(TickPlayerEvent {
                     player: player.value,
@@ -1378,7 +1443,7 @@ fn fight(
     {
         match [state_0.0, state_1.0] {
             [PlayerStates::Attacking, PlayerStates::Attacking] => {
-                if roll_the_dice(marksmanship_1.value) > roll_the_dice(luck_0.value) {
+                if marksmanship_1.value.roll() > luck_0.value.roll() {
                     ev_damage.send(DamageEvent {
                         player: player_0.value,
                         value: damage_1.value,
@@ -1389,7 +1454,7 @@ fn fight(
                     });
                 }
 
-                if roll_the_dice(marksmanship_0.value) > roll_the_dice(luck_1.value) {
+                if marksmanship_0.value.roll() > luck_1.value.roll() {
                     ev_damage.send(DamageEvent {
                         player: player_1.value,
                         value: damage_0.value,
@@ -1404,7 +1469,7 @@ fn fight(
             | PlayerStates::NotAttacking
             | PlayerStates::NotDodging
             | PlayerStates::Buffing] => {
-                if roll_the_dice(marksmanship_0.value) > roll_the_dice(luck_1.value) {
+                if marksmanship_0.value.roll() > luck_1.value.roll() {
                     ev_damage.send(DamageEvent {
                         player: player_1.value,
                         value: damage_0.value,
@@ -1419,7 +1484,7 @@ fn fight(
             | PlayerStates::NotAttacking
             | PlayerStates::NotDodging
             | PlayerStates::Buffing, PlayerStates::Attacking] => {
-                if roll_the_dice(marksmanship_1.value) > roll_the_dice(luck_0.value) {
+                if marksmanship_1.value.roll() > luck_0.value.roll() {
                     ev_damage.send(DamageEvent {
                         player: player_0.value,
                         value: damage_1.value,
@@ -1528,7 +1593,9 @@ fn damage_reset(mut query: Query<(&mut Damage, &PlayerState), With<Player>>) {
 fn luck_reset(mut query: Query<(&mut Luck, &PlayerState), With<Player>>) {
     for (mut luck, player_state) in &mut query {
         if player_state.0 != PlayerStates::Buffing {
-            luck.value = DEFAULT_LUCK;
+            luck.value = Dice {
+                value: DEFAULT_LUCK,
+            };
         }
     }
 }
@@ -1536,7 +1603,9 @@ fn luck_reset(mut query: Query<(&mut Luck, &PlayerState), With<Player>>) {
 fn marksmanship_reset(mut query: Query<(&mut Marksmanship, &PlayerState), With<Player>>) {
     for (mut marksmanship, player_state) in &mut query {
         if player_state.0 != PlayerStates::Buffing {
-            marksmanship.value = N_FACETED_DICE;
+            marksmanship.value = Dice {
+                value: DEFAULT_MARKSMANSHIP,
+            };
         }
     }
 }
@@ -1695,7 +1764,7 @@ fn restore_dodge(
 ) {
     if round_counter.0 % 2 == 0 {
         for (mut dodges, luck, player) in &mut query {
-            if roll_the_dice(N_FACETED_DICE) <= luck.value {
+            if luck.value.roll() >= 25 {
                 dodges.value += 1;
                 ev_tick_player.send(TickPlayerEvent {
                     player: player.value,
@@ -1718,7 +1787,7 @@ fn restore_bullet(
 ) {
     if round_counter.0 % 2 == 0 {
         for (mut bullets, luck, player) in &mut query {
-            if roll_the_dice(N_FACETED_DICE) <= luck.value {
+            if luck.value.roll() >= 25 {
                 bullets.value += 1;
                 ev_tick_player.send(TickPlayerEvent {
                     player: player.value,
@@ -1809,52 +1878,5 @@ fn wait_for_input_to_exit_game(
         if *key == KeyCode::Enter {
             next_app_state.set(AppStates::Menu);
         }
-    }
-}
-
-// Helpers
-// ================================================================
-
-fn play_state_transitions(play_state: PlayStates) -> PlayStates {
-    match play_state {
-        PlayStates::Preparing => PlayStates::Countdown,
-        PlayStates::Countdown => PlayStates::Betting,
-        PlayStates::Betting => PlayStates::Fighting,
-        PlayStates::Fighting => PlayStates::RoundingUp,
-        PlayStates::RoundingUp => PlayStates::Preparing,
-        _ => play_state,
-    }
-}
-
-fn key_to_player_state(
-    key_assignments: &[KeyCode; N_KEYS_PER_PLAYER],
-    key: &KeyCode,
-) -> Option<PlayerStates> {
-    if *key == key_assignments[0] {
-        Some(PlayerStates::Attacking)
-    } else if *key == key_assignments[1] {
-        Some(PlayerStates::Dodging)
-    } else if *key == key_assignments[2] {
-        Some(PlayerStates::Buffing)
-    } else {
-        None
-    }
-}
-
-fn roll_the_dice(dice_max: u8) -> u8 {
-    let mut rng = rand::rng();
-    let nums: Vec<u8> = (1..dice_max).collect();
-
-    *nums.choose(&mut rng).unwrap()
-}
-
-mod tests {
-    #[cfg(test)]
-    use crate::hit_a_key::*;
-
-    #[test]
-    fn test_roll_the_dice() {
-        let possible_values: [u8; 3] = [1, 2, 3];
-        assert!(possible_values.contains(&roll_the_dice(3)));
     }
 }
