@@ -1,12 +1,10 @@
 DOING:
 - add press x to exit on game over screen
 - add press to restart on game over screen
-- add tick on health win (buff)
-- add pause system
 - refactor opacity and scale to be it's own components and always running? (perf ?)
-- refactor hold the dice as an impl on generic type ?
 
-- lucky charm should shoot ? Dodge ? = more chance of avoiding
+- add pause system ?
+- lucky charm should do nothing more chance of avoiding ?
 - sharpshooter should definitely shoot = more chance of hitting
 
 TODO:

@@ -1,12 +1,7 @@
 use bevy::prelude::*;
 
-mod hit_a_key;
-
-use crate::hit_a_key::HitAKeyPlugin;
+use hit_a_key_game::AppPlugin;
 
 fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins)
-        .add_plugins(HitAKeyPlugin)
-        .run();
+    App::new().add_plugins(AppPlugin).run();
 }
