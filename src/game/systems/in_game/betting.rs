@@ -18,17 +18,19 @@ fn reset_betting_timer(mut betting_timer: ResMut<BettingTimer>) {
 }
 
 fn set_player_state(
-    mut query: Query<(&KeyAssignment, &mut PlayerState, &Dodges, &Bullets)>,
+    mut query: Query<(&KeyAssignment, &mut PlayerState, &Dodges, &Bullets, &Player)>,
     mut ev_change_player_state: EventWriter<PlayerStateChangeEvent>,
     keys: Res<ButtonInput<KeyCode>>,
 ) {
     for key in keys.get_just_pressed() {
-        for (key_assignements, mut player_state, dodges, bullets) in &mut query {
+        for (key_assignements, mut player_state, dodges, bullets, player) in &mut query {
             let requested_state = key_assignements
                 .derive_player_state(key)
                 .unwrap_or(player_state.0);
 
-            ev_change_player_state.send(PlayerStateChangeEvent);
+            ev_change_player_state.send(PlayerStateChangeEvent {
+                player: player.value,
+            });
 
             match requested_state {
                 PlayerStates::Attacking => {

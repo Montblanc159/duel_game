@@ -9,7 +9,16 @@ pub struct InGameEntity;
 pub struct MenuEntity;
 
 #[derive(Component)]
-#[require(Health, Luck, Buff, Damage, Dodges, Bullets, Marksmanship)]
+#[require(
+    Health,
+    Luck,
+    Buff,
+    Damage,
+    Dodges,
+    Bullets,
+    Marksmanship,
+    HandTextureIndices
+)]
 pub struct Player {
     pub value: u8,
 }
@@ -147,6 +156,25 @@ impl Default for Buff {
     }
 }
 
+#[derive(Component)]
+pub struct HandTextureIndices {
+    idle: usize,
+    shoot: usize,
+    dodge: usize,
+    buff: usize,
+}
+
+impl Default for HandTextureIndices {
+    fn default() -> Self {
+        HandTextureIndices {
+            buff: 0,
+            idle: 1,
+            shoot: 2,
+            dodge: 3,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum PlayerStates {
     #[default]
@@ -160,6 +188,17 @@ pub enum PlayerStates {
 
 #[derive(Component, Debug, Default)]
 pub struct PlayerState(pub PlayerStates);
+
+impl PlayerState {
+    pub fn derive_hand_texture_index(&self, hand_texture_indices: &HandTextureIndices) -> usize {
+        match self.0 {
+            PlayerStates::Idle => hand_texture_indices.idle,
+            PlayerStates::Buffing => hand_texture_indices.buff,
+            PlayerStates::Attacking | PlayerStates::NotAttacking => hand_texture_indices.shoot,
+            PlayerStates::Dodging | PlayerStates::NotDodging => hand_texture_indices.dodge,
+        }
+    }
+}
 
 #[derive(Component)]
 pub struct KeyAssignment(pub [KeyCode; N_KEYS_PER_PLAYER]);

@@ -8,6 +8,12 @@ pub mod paused;
 pub mod preparing;
 pub mod rounding_up;
 
+fn load_hands_textures(asset_server: Res<AssetServer>, mut hand: ResMut<assets::HandSpritesheet>) {
+    let hand_spritesheet_handle = asset_server.load("images/hand_spritesheet.png");
+
+    hand.spritesheet = Some(hand_spritesheet_handle);
+}
+
 fn reset_game(mut rounds: ResMut<RoundCounter>, mut game_over: ResMut<GameOver>) {
     rounds.0 = 1; // reset rounds
     game_over.0 = false; // reset game_over
@@ -123,28 +129,46 @@ fn despawn_timer_ui(mut commands: Commands, query: Query<Entity, With<TimerUITex
 
 fn spawn_players(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    hand_texture: Res<assets::HandSpritesheet>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
-    commands.spawn((
-        Player { value: 1 },
-        KeyAssignment(PLAYER_ONE_KEYS),
-        PlayerState(PlayerStates::Idle),
-        Mesh2d(meshes.add(Circle::new(50.0))),
-        MeshMaterial2d(materials.add(Color::srgb(255., 0., 0.))),
-        Transform::from_xyz(-250., 0.0, 0.0),
-        InGameEntity,
-    ));
+    if let Some(texture) = hand_texture.spritesheet.as_ref() {
+        let layout = TextureAtlasLayout::from_grid(UVec2::splat(300), 4, 1, None, None);
+        let texture_atlas_layout = texture_atlas_layouts.add(layout);
 
-    commands.spawn((
-        Player { value: 2 },
-        KeyAssignment(PLAYER_TWO_KEYS),
-        PlayerState(PlayerStates::Idle),
-        Mesh2d(meshes.add(Circle::new(50.0))),
-        MeshMaterial2d(materials.add(Color::srgb(0., 0., 255.))),
-        Transform::from_xyz(250., 0.0, 0.0),
-        InGameEntity,
-    ));
+        commands.spawn((
+            Player { value: 1 },
+            KeyAssignment(PLAYER_ONE_KEYS),
+            PlayerState(PlayerStates::Idle),
+            Sprite {
+                image: texture.clone(),
+                texture_atlas: Some(TextureAtlas {
+                    layout: texture_atlas_layout.clone(),
+                    index: 1,
+                }),
+                ..default()
+            },
+            Transform::from_xyz(-250., 0.0, 0.0),
+            InGameEntity,
+        ));
+
+        commands.spawn((
+            Player { value: 2 },
+            KeyAssignment(PLAYER_TWO_KEYS),
+            PlayerState(PlayerStates::Idle),
+            Sprite {
+                image: texture.clone(),
+                texture_atlas: Some(TextureAtlas {
+                    layout: texture_atlas_layout,
+                    index: 1,
+                }),
+                flip_x: true,
+                ..default()
+            },
+            Transform::from_xyz(250., 0.0, 0.0),
+            InGameEntity,
+        ));
+    }
 }
 
 fn spawn_play_state_text(mut commands: Commands, query: Query<&Window>) {
@@ -262,6 +286,21 @@ fn player_state_text_update(
             for (player_state, player) in &query_state {
                 if player_state_text.value == player.value {
                     **text = format!("{:?}", player_state);
+                }
+            }
+        }
+    }
+}
+
+fn player_state_hand_texture_update(
+    mut ev_player_state: EventReader<PlayerStateChangeEvent>,
+    mut query_state: Query<(&PlayerState, &Player, &HandTextureIndices, &mut Sprite), With<Player>>,
+) {
+    for ev in ev_player_state.read() {
+        for (player_state, player, hand_texture_indices, mut sprite) in &mut query_state {
+            if ev.player == player.value {
+                if let Some(atlas) = &mut sprite.texture_atlas {
+                    atlas.index = player_state.derive_hand_texture_index(hand_texture_indices);
                 }
             }
         }
@@ -506,6 +545,7 @@ pub fn plugin(app: &mut App) {
     app.add_systems(
         OnEnter(AppStates::InGame),
         (
+            load_hands_textures,
             spawn_players,
             (
                 spawn_play_state_text,
@@ -533,6 +573,7 @@ pub fn plugin(app: &mut App) {
             player_state_text_update,
             round_number_text_update,
             play_state_text_update,
+            player_state_hand_texture_update,
             health_text_update,
             bullet_text_update,
             dodge_text_update,

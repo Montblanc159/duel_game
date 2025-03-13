@@ -1,12 +1,14 @@
 use super::*;
 
 fn prepare_player_for_next_round(
-    mut query: Query<&mut PlayerState, With<Player>>,
+    mut query: Query<(&mut PlayerState, &Player), With<Player>>,
     mut ev_change_player_state: EventWriter<PlayerStateChangeEvent>,
 ) {
-    for mut player_state in &mut query {
+    for (mut player_state, player) in &mut query {
         player_state.0 = PlayerStates::Idle;
-        ev_change_player_state.send(PlayerStateChangeEvent);
+        ev_change_player_state.send(PlayerStateChangeEvent {
+            player: player.value,
+        });
     }
 }
 

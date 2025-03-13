@@ -13,7 +13,9 @@ pub struct GameOverEvent {
 }
 
 #[derive(Event)]
-pub struct PlayerStateChangeEvent;
+pub struct PlayerStateChangeEvent {
+    pub player: u8,
+}
 
 #[derive(Event)]
 pub struct DamageEvent {
