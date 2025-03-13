@@ -95,7 +95,7 @@ pub fn listen_damage_event(
 
                 ev_tick_player.send(TickPlayerEvent {
                     player: player.value,
-                    value: format!("-{}", ev.value),
+                    value: format!("\n-{}", ev.value),
                 });
             }
         }
@@ -112,7 +112,7 @@ pub fn listen_missed_event(
             if player.value == ev.player {
                 ev_tick_player.send(TickPlayerEvent {
                     player: player.value,
-                    value: "Missed!".into(),
+                    value: "\nMissed!".into(),
                 });
             }
         }
@@ -129,7 +129,7 @@ pub fn listen_dodged_event(
             if player.value == ev.player {
                 ev_tick_player.send(TickPlayerEvent {
                     player: player.value,
-                    value: "Dodged!".into(),
+                    value: "\nDodged!".into(),
                 });
             }
         }

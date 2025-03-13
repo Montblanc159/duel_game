@@ -50,6 +50,33 @@ fn spawn_winner_text(
     }
 }
 
+fn spawn_press_enter_text(mut commands: Commands, windows_query: Query<&Window>) {
+    let window = windows_query.single();
+
+    commands
+        .spawn((
+            Node {
+                width: Val::Px(window.width()),
+                height: Val::Px(window.height()),
+                align_content: AlignContent::Center,
+                align_items: AlignItems::End,
+                ..default()
+            },
+            GlobalZIndex(2),
+            InGameEntity,
+        ))
+        .with_child((
+            Node {
+                width: Val::Px(window.width()),
+                ..default()
+            },
+            Text::new("Press Enter to exit"),
+            TextLayout::new_with_justify(JustifyText::Center),
+            TextFont::from_font_size(75.),
+            InGameEntity,
+        ));
+}
+
 fn wait_for_input_to_exit_game(
     keys: Res<ButtonInput<KeyCode>>,
     mut next_app_state: ResMut<NextState<AppStates>>,
@@ -62,7 +89,10 @@ fn wait_for_input_to_exit_game(
 }
 
 pub fn plugin(app: &mut App) {
-    app.add_systems(OnEnter(PlayStates::GameOver), spawn_winner_text);
+    app.add_systems(
+        OnEnter(PlayStates::GameOver),
+        (spawn_winner_text, spawn_press_enter_text),
+    );
     // app.add_systems(OnExit(PlayStates::GameOver));
 
     app.add_systems(

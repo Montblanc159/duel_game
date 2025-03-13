@@ -1,17 +1,17 @@
 DOING:
-- add press x to exit on game over screen
-- add press to restart on game over screen
-- refactor opacity and scale to be it's own components and always running? (perf ?)
+- add press space to restart on game over screen
 
+- Graphics & anims !!
+    - use sprite sheet/handle image size outside of sprite
+
+TODOORNOTODO? :
 - add pause system ?
 - lucky charm should do nothing more chance of avoiding ?
-- sharpshooter should definitely shoot = more chance of hitting
+- refactor with system sets ?
+- refactor opacity and scale to be it's own components and always running? (perf ?)
 
 TODO:
-- refactor with system sets ?
-- Graphics & anims !!
 - Audio
-- divide into multiple files ?
 
 
 -----

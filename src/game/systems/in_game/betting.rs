@@ -61,15 +61,19 @@ fn add_buffes(mut query: Query<(&mut Buff, &PlayerState), With<Player>>) {
 }
 
 fn increase_damage_buff(
-    mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &mut Bullets, &Player), With<Player>>,
+    mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &Bullets, &Player), With<Player>>,
     mut ev_tick_player: EventWriter<TickPlayerEvent>,
 ) {
-    for (&buff, mut damage, mut player_state, mut bullets, player) in &mut query {
+    for (&buff, mut damage, mut player_state, bullets, player) in &mut query {
         if let Some(buff_value) = buff.value {
             if buff_value == Buffes::IncreaseDamageBuff {
                 damage.value += 1;
-                bullets.value += 1;
-                player_state.0 = PlayerStates::Attacking;
+
+                player_state.0 = if bullets.value > 0 {
+                    PlayerStates::Attacking
+                } else {
+                    PlayerStates::NotAttacking
+                };
 
                 ev_tick_player.send(TickPlayerEvent {
                     player: player.value,
@@ -81,15 +85,19 @@ fn increase_damage_buff(
 }
 
 fn golden_bullet_buff(
-    mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &mut Bullets, &Player), With<Player>>,
+    mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &Bullets, &Player), With<Player>>,
     mut ev_tick_player: EventWriter<TickPlayerEvent>,
 ) {
-    for (&buff, mut damage, mut player_state, mut bullets, player) in &mut query {
+    for (&buff, mut damage, mut player_state, bullets, player) in &mut query {
         if let Some(buff_value) = buff.value {
             if buff_value == Buffes::GoldenBulletBuff {
                 damage.value = 5;
-                bullets.value += 1;
-                player_state.0 = PlayerStates::Attacking;
+
+                player_state.0 = if bullets.value > 0 {
+                    PlayerStates::Attacking
+                } else {
+                    PlayerStates::NotAttacking
+                };
 
                 ev_tick_player.send(TickPlayerEvent {
                     player: player.value,
@@ -173,13 +181,28 @@ fn luck_buff(
 }
 
 fn marksmanship_buff(
-    mut query: Query<(&Buff, &mut Marksmanship, &Player), With<Player>>,
+    mut query: Query<
+        (
+            &Buff,
+            &mut Marksmanship,
+            &Player,
+            &Bullets,
+            &mut PlayerState,
+        ),
+        With<Player>,
+    >,
     mut ev_tick_player: EventWriter<TickPlayerEvent>,
 ) {
-    for (&buff, mut marksmanship, player) in &mut query {
+    for (&buff, mut marksmanship, player, bullets, mut player_state) in &mut query {
         if let Some(buff_value) = buff.value {
             if buff_value == Buffes::MarksmanshipBuff {
                 marksmanship.value += Dice { value: 50 };
+
+                player_state.0 = if bullets.value > 0 {
+                    PlayerStates::Attacking
+                } else {
+                    PlayerStates::NotAttacking
+                };
 
                 ev_tick_player.send(TickPlayerEvent {
                     player: player.value,
