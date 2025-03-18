@@ -6,7 +6,7 @@ fn wait_for_input_to_start_game(
 ) {
     for key in keys.get_just_pressed() {
         if *key == KeyCode::Enter {
-            next_app_state.set(AppStates::InGame);
+            next_app_state.set(AppStates::Loading);
         }
     }
 }

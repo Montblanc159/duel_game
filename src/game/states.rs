@@ -29,6 +29,7 @@ impl PlayStates {
 pub enum AppStates {
     #[default]
     Menu,
+    Loading,
     InGame,
 }
 

@@ -8,12 +8,6 @@ pub mod paused;
 pub mod preparing;
 pub mod rounding_up;
 
-fn load_hands_textures(asset_server: Res<AssetServer>, mut hand: ResMut<assets::HandSpritesheet>) {
-    let hand_spritesheet_handle = asset_server.load("images/hand_spritesheet.png");
-
-    hand.spritesheet = Some(hand_spritesheet_handle);
-}
-
 fn reset_game(mut rounds: ResMut<RoundCounter>, mut game_over: ResMut<GameOver>) {
     rounds.0 = 1; // reset rounds
     game_over.0 = false; // reset game_over
@@ -545,7 +539,6 @@ pub fn plugin(app: &mut App) {
     app.add_systems(
         OnEnter(AppStates::InGame),
         (
-            load_hands_textures,
             spawn_players,
             (
                 spawn_play_state_text,

@@ -9,6 +9,9 @@ pub struct InGameEntity;
 pub struct MenuEntity;
 
 #[derive(Component)]
+pub struct LoadingEntity;
+
+#[derive(Component)]
 #[require(
     Health,
     Luck,

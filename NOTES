@@ -1,8 +1,26 @@
 DOING:
-- add press space to restart on game over screen
+- add init app state to load font/menu assets
+- add system to unload assets per app states
 
 - Graphics & anims !!
-    - use sprite sheet/handle image size outside of sprite
+    - add animated background
+    - bigger gap between hands, bigger hands
+    - animate each hand position
+    - add animated transition between hand changes
+    - add buff graphically to hands
+    - add camera shakes
+    - stylize timers
+    - add font
+    - stylize health/dodges/bullets
+    - stylize round
+    - stylize round name
+    - add shooting animation
+    - add damage animation
+    - add dodging animation
+    - add buffing animation (each buff = one animation)
+    - add death animation
+    - add win animation
+    - add lose animation
 
 TODOORNOTODO? :
 - add pause system ?
@@ -12,6 +30,13 @@ TODOORNOTODO? :
 
 TODO:
 - Audio
+    - add audio FX for each hand position changes
+    - add music (each round different ? Menu + InGame music)
+    - add timer sound
+    - add clonk sound if typing has no effect
+    - add sound upon clicking space to launch new round
+    - add sound upon exiting game
+    - add sound upon entering game
 
 
 -----

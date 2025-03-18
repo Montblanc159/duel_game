@@ -14,6 +14,9 @@ pub struct RoundCounter(pub u8);
 #[derive(Resource)]
 pub struct GameOver(pub bool);
 
+#[derive(Resource)]
+pub struct AssetsLoading(pub Vec<UntypedHandle>);
+
 pub(super) fn plugin(app: &mut App) {
     app.insert_resource(BettingTimer(Timer::from_seconds(
         DEFAULT_BETTING_TIMER,
@@ -27,4 +30,6 @@ pub(super) fn plugin(app: &mut App) {
     app.insert_resource(GameOver(false));
 
     app.insert_resource(assets::HandSpritesheet { ..default() });
+
+    app.insert_resource(AssetsLoading(default()));
 }
