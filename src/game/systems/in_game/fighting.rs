@@ -222,10 +222,9 @@ pub fn plugin(app: &mut App) {
             listen_damage_event,
             listen_missed_event,
             listen_dodged_event,
-            listen_spawn_player_tick_ui,
-            animate_player_tick_text_opacity,
-            animate_player_tick_font_size,
-            (next_play_state).run_if(check_fighting_phase_ended),
+            (next_play_state)
+                .run_if(check_fighting_phase_ended)
+                .run_if(events_empty::<TickPlayerEvent>),
         )
             .run_if(in_state(PlayStates::Fighting))
             .chain()
@@ -239,7 +238,6 @@ pub fn plugin(app: &mut App) {
             damage_reset,
             marksmanship_reset,
             luck_reset,
-            despawn_player_tick_ui,
         ),
     );
 }

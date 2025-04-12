@@ -43,7 +43,7 @@ fn listen_spawn_player_tick_ui(
 ) {
     for ev in ev_tick_player.read() {
         let window = window_query.single();
-        let dimensions = [450., 250.];
+        let dimensions = [450., 450.];
 
         for (player, transform) in &query {
             if player.value == ev.player {
@@ -69,6 +69,7 @@ fn listen_spawn_player_tick_ui(
                     },
                     TextColor(Color::srgb(255., 0., 0.)),
                     TextLayout::new_with_justify(JustifyText::Center),
+                    GlobalZIndex(1),
                     PlayerTickText,
                     InGameEntity,
                 ));
@@ -104,14 +105,14 @@ fn animate_player_tick_font_size(
 
 fn spawn_timer_ui(mut commands: Commands, window_query: Query<&Window>) {
     let window = window_query.single();
-    let dimensions = [70., 70.];
+    let dimensions = [200., 200.];
 
     commands.spawn((
         Node {
             width: Val::Px(dimensions[0]),
             height: Val::Px(dimensions[1]),
             position_type: PositionType::Absolute,
-            top: Val::Px(DEFAULT_MARGIN - (dimensions[1] / 2.)),
+            top: Val::Px(75.),
             left: Val::Px((window.width() / 2.) - (dimensions[0] / 2.)),
             align_content: AlignContent::Center,
             align_items: AlignItems::Center,
@@ -119,7 +120,7 @@ fn spawn_timer_ui(mut commands: Commands, window_query: Query<&Window>) {
         },
         Text::default(),
         TextFont {
-            font_size: DEFAULT_FONT_SIZE,
+            font_size: DEFAULT_FONT_SIZE * 0.5,
             ..default()
         },
         TextColor(Color::WHITE),
@@ -183,14 +184,14 @@ fn spawn_players(
 
 fn spawn_play_state_text(mut commands: Commands, query: Query<&Window>) {
     let window = query.single();
-    let dimensions = [250., 50.];
+    let dimensions = [250., 200.];
 
     commands.spawn((
         Node {
             width: Val::Px(dimensions[0]),
             height: Val::Px(dimensions[1]),
             position_type: PositionType::Absolute,
-            bottom: Val::Px(150. - (dimensions[1] / 2.)),
+            bottom: Val::Px(75. - (dimensions[1] / 2.)),
             left: Val::Px(window.width() / 2. - (dimensions[0] / 2.)),
             ..default()
         },
@@ -201,7 +202,6 @@ fn spawn_play_state_text(mut commands: Commands, query: Query<&Window>) {
         },
         TextColor(Color::WHITE),
         TextLayout::new_with_justify(JustifyText::Center),
-        GlobalZIndex(1),
         PlayStateText,
         InGameEntity,
     ));
@@ -218,25 +218,24 @@ fn play_state_text_update(
 
 fn spawn_round_number_text(mut commands: Commands, query: Query<&Window>) {
     let window = query.single();
-    let dimensions = [250., 50.];
+    let dimensions = [250., 100.];
 
     commands.spawn((
         Node {
             width: Val::Px(dimensions[0]),
             height: Val::Px(dimensions[1]),
             position_type: PositionType::Absolute,
-            bottom: Val::Px(200. - (dimensions[1] / 2.)),
+            top: Val::Px(75. - (dimensions[1] / 2.)),
             left: Val::Px(window.width() / 2. - (dimensions[0] / 2.)),
             ..default()
         },
         Text::new(format!("Round 1/{}", N_MAX_ROUND)),
         TextFont {
-            font_size: DEFAULT_FONT_SIZE,
+            font_size: DEFAULT_FONT_SIZE * 0.25,
             ..default()
         },
         TextColor(Color::WHITE),
         TextLayout::new_with_justify(JustifyText::Center),
-        GlobalZIndex(1),
         RoundNumberText,
         InGameEntity,
     ));
@@ -266,164 +265,161 @@ fn player_state_hand_texture_update(
     }
 }
 
-fn spawn_health_text(
+fn spawn_health_bar(
     mut commands: Commands,
-    window_query: Query<&Window>,
-    query: Query<&Player, With<Player>>,
+    query: Query<(&Player, &Transform), With<Player>>,
+    texture: Res<assets::HealthSpritesheet>,
+    window: Single<&Window>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
-    let window = window_query.single();
-    let dimensions = [25., 200.];
+    if let Some(texture) = texture.spritesheet.as_ref() {
+        let layout = TextureAtlasLayout::from_grid(UVec2 { x: 150, y: 25 }, 4, 1, None, None);
+        let texture_atlas_layout = texture_atlas_layouts.add(layout);
 
-    for player in &query {
-        let left_position = if player.value == 1 {
-            DEFAULT_MARGIN
-        } else {
-            window.width() - DEFAULT_MARGIN
-        };
-
-        commands.spawn((
-            Node {
-                width: Val::Px(dimensions[0]),
-                height: Val::Px(dimensions[1]),
-                position_type: PositionType::Absolute,
-                top: Val::Px(25.),
-                left: Val::Px(left_position - (dimensions[0] / 2.)),
-                align_content: AlignContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            Text::default(),
-            TextFont {
-                font_size: DEFAULT_FONT_SIZE,
-                ..default()
-            },
-            TextColor(Color::WHITE),
-            TextLayout::new_with_justify(JustifyText::Center),
-            HealthText {
-                value: player.value,
-            },
-            GlobalZIndex(1),
-            InGameEntity,
-        ));
+        for (player, transform) in &query {
+            commands.spawn((
+                Sprite {
+                    image: texture.clone(),
+                    texture_atlas: Some(TextureAtlas {
+                        layout: texture_atlas_layout.clone(),
+                        index: 0,
+                    }),
+                    custom_size: Some(Vec2::new(300., 50.)),
+                    // flip_x: true,
+                    ..default()
+                },
+                Transform::from_xyz(
+                    transform.translation.x * 1.5,
+                    -window.height() / 2. + 75.,
+                    1.,
+                ),
+                HealthBar {
+                    value: player.value,
+                },
+                InGameEntity,
+            ));
+        }
     }
 }
 
-fn health_text_update(
-    mut query_ui: Query<(&mut Text, &HealthText), With<HealthText>>,
+fn health_bar_update(
+    mut query_ui: Query<(&HealthBar, &mut Sprite)>,
     query_state: Query<(&Health, &Player), With<Player>>,
 ) {
-    for (mut text, health_text) in &mut query_ui {
+    for (health_bar, mut sprite) in &mut query_ui {
         for (health, player) in &query_state {
-            if health_text.value == player.value {
-                **text = format!("{} PV", health.value);
+            if health_bar.value == player.value {
+                if let Some(atlas) = &mut sprite.texture_atlas {
+                    atlas.index = 3 - health.value as usize;
+                }
             }
         }
     }
 }
 
-fn spawn_bullet_text(
+fn spawn_mana_bar(
     mut commands: Commands,
-    window_query: Query<&Window>,
-    query: Query<&Player, With<Player>>,
+    query: Query<(&Player, &Transform), With<Player>>,
+    texture: Res<assets::ManaSpritesheet>,
+    window: Single<&Window>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
-    let window = window_query.single();
-    let dimensions = [25., 200.];
+    // let dimensions = [25., 200.];
 
-    for player in &query {
-        let left_position = if player.value == 1 {
-            DEFAULT_MARGIN
-        } else {
-            window.width() - DEFAULT_MARGIN
-        };
+    if let Some(texture) = texture.spritesheet.as_ref() {
+        let layout = TextureAtlasLayout::from_grid(UVec2 { x: 150, y: 11 }, 4, 1, None, None);
+        let texture_atlas_layout = texture_atlas_layouts.add(layout);
 
-        commands.spawn((
-            Node {
-                width: Val::Px(dimensions[0]),
-                height: Val::Px(dimensions[1]),
-                position_type: PositionType::Absolute,
-                top: Val::Px(100.),
-                left: Val::Px(left_position - (dimensions[0] / 2.)),
-                align_content: AlignContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            Text::default(),
-            TextFont {
-                font_size: DEFAULT_FONT_SIZE,
-                ..default()
-            },
-            TextColor(Color::WHITE),
-            TextLayout::new_with_justify(JustifyText::Center),
-            BulletText {
-                value: player.value,
-            },
-            InGameEntity,
-        ));
+        for (player, transform) in &query {
+            commands.spawn((
+                Sprite {
+                    image: texture.clone(),
+                    texture_atlas: Some(TextureAtlas {
+                        layout: texture_atlas_layout.clone(),
+                        index: 0,
+                    }),
+                    custom_size: Some(Vec2::new(300., 22.)),
+                    // flip_x: true,
+                    ..default()
+                },
+                Transform::from_xyz(
+                    transform.translation.x * 1.5,
+                    -window.height() / 2. + 120.,
+                    1.,
+                ),
+                ManaBar {
+                    value: player.value,
+                },
+                InGameEntity,
+            ));
+        }
     }
 }
 
-fn bullet_text_update(
-    mut query_ui: Query<(&mut Text, &BulletText), With<BulletText>>,
+fn mana_bar_update(
+    mut query_ui: Query<(&ManaBar, &mut Sprite)>,
     query_state: Query<(&Bullets, &Player), With<Player>>,
 ) {
-    for (mut text, bullet_text) in &mut query_ui {
+    for (mana_bar, mut sprite) in &mut query_ui {
         for (bullets, player) in &query_state {
-            if bullet_text.value == player.value {
-                **text = format!("{} bullets", bullets.value);
+            if mana_bar.value == player.value {
+                if let Some(atlas) = &mut sprite.texture_atlas {
+                    atlas.index = 3 - bullets.value as usize;
+                }
             }
         }
     }
 }
 
-fn spawn_dodge_text(
+fn spawn_stamina_bar(
     mut commands: Commands,
-    window_query: Query<&Window>,
-    query: Query<&Player, With<Player>>,
+    query: Query<(&Player, &Transform), With<Player>>,
+    texture: Res<assets::StaminaSpritesheet>,
+    window: Single<&Window>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
-    let window = window_query.single();
-    let dimensions = [25., 200.];
+    // let dimensions = [25., 200.];
 
-    for player in &query {
-        let left_position = if player.value == 1 {
-            DEFAULT_MARGIN
-        } else {
-            window.width() - DEFAULT_MARGIN
-        };
+    if let Some(texture) = texture.spritesheet.as_ref() {
+        let layout = TextureAtlasLayout::from_grid(UVec2 { x: 150, y: 10 }, 4, 1, None, None);
+        let texture_atlas_layout = texture_atlas_layouts.add(layout);
 
-        commands.spawn((
-            Node {
-                width: Val::Px(dimensions[0]),
-                height: Val::Px(dimensions[1]),
-                position_type: PositionType::Absolute,
-                top: Val::Px(175.),
-                left: Val::Px(left_position - (dimensions[0] / 2.)),
-                align_content: AlignContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            Text::default(),
-            TextFont {
-                font_size: DEFAULT_FONT_SIZE,
-                ..default()
-            },
-            TextColor(Color::WHITE),
-            TextLayout::new_with_justify(JustifyText::Center),
-            DodgeText {
-                value: player.value,
-            },
-            InGameEntity,
-        ));
+        for (player, transform) in &query {
+            commands.spawn((
+                Sprite {
+                    image: texture.clone(),
+                    texture_atlas: Some(TextureAtlas {
+                        layout: texture_atlas_layout.clone(),
+                        index: 0,
+                    }),
+                    custom_size: Some(Vec2::new(300., 20.)),
+                    // flip_x: true,
+                    ..default()
+                },
+                Transform::from_xyz(
+                    transform.translation.x * 1.5,
+                    -window.height() / 2. + 145.,
+                    1.,
+                ),
+                StaminaBar {
+                    value: player.value,
+                },
+                InGameEntity,
+            ));
+        }
     }
 }
 
-fn dodge_text_update(
-    mut query_ui: Query<(&mut Text, &DodgeText), With<DodgeText>>,
+fn stamina_bar_update(
+    mut query_ui: Query<(&StaminaBar, &mut Sprite)>,
     query_state: Query<(&Dodges, &Player), With<Player>>,
 ) {
-    for (mut text, dodge_text) in &mut query_ui {
+    for (mana_bar, mut sprite) in &mut query_ui {
         for (dodges, player) in &query_state {
-            if dodge_text.value == player.value {
-                **text = format!("{} dodges", dodges.value);
+            if mana_bar.value == player.value {
+                if let Some(atlas) = &mut sprite.texture_atlas {
+                    atlas.index = 3 - dodges.value as usize;
+                }
             }
         }
     }
@@ -505,9 +501,9 @@ pub fn plugin(app: &mut App) {
             (
                 spawn_play_state_text,
                 spawn_round_number_text,
-                spawn_health_text,
-                spawn_bullet_text,
-                spawn_dodge_text,
+                spawn_health_bar,
+                spawn_mana_bar,
+                spawn_stamina_bar,
             ),
             launch_game,
         )
@@ -524,12 +520,15 @@ pub fn plugin(app: &mut App) {
         (
             listen_game_overs,
             listen_spawn_alert_text,
+            listen_spawn_player_tick_ui,
+            animate_player_tick_text_opacity,
+            animate_player_tick_font_size,
             round_number_text_update,
             play_state_text_update,
             player_state_hand_texture_update,
-            health_text_update,
-            bullet_text_update,
-            dodge_text_update,
+            health_bar_update,
+            mana_bar_update,
+            stamina_bar_update,
         )
             .run_if(in_state(AppStates::InGame)),
     );

@@ -213,7 +213,6 @@ pub fn plugin(app: &mut App) {
     app.add_systems(
         Update,
         (
-            listen_spawn_player_tick_ui,
             animate_player_tick_text_opacity,
             animate_player_tick_font_size,
             (next_play_state).run_if(check_rounding_up_phase_ended),

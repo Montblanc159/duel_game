@@ -11,3 +11,7 @@ fn clean_system<T: Component>(mut commands: Commands, query: Query<Entity, With<
         commands.entity(entity).despawn_recursive()
     }
 }
+
+fn events_empty<T: Event>(events: Res<Events<T>>) -> bool {
+    events.is_empty()
+}
