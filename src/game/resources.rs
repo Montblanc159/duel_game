@@ -30,6 +30,10 @@ pub(super) fn plugin(app: &mut App) {
     app.insert_resource(GameOver(false));
 
     app.insert_resource(assets::HandSpritesheet { ..default() });
+    app.insert_resource(assets::HealthSpritesheet { ..default() });
+    app.insert_resource(assets::StaminaSpritesheet { ..default() });
+    app.insert_resource(assets::ManaSpritesheet { ..default() });
+    app.insert_resource(assets::BgSprite { ..default() });
 
     app.insert_resource(AssetsLoading(default()));
 }

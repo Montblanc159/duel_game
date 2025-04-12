@@ -21,6 +21,20 @@ fn launch_game(mut next_play_state: ResMut<NextState<PlayStates>>) {
     next_play_state.set(PlayStates::Countdown);
 }
 
+fn spawn_bg(mut commands: Commands, bg_texture: Res<assets::BgSprite>, window: Single<&Window>) {
+    if let Some(texture) = bg_texture.sprite.as_ref() {
+        commands.spawn((
+            Sprite {
+                image: texture.clone(),
+                custom_size: Some(Vec2::new(window.width(), window.height())),
+                ..default()
+            },
+            Transform::from_xyz(0., 0., -1.),
+            InGameEntity,
+        ));
+    };
+}
+
 fn listen_spawn_player_tick_ui(
     mut commands: Commands,
     mut ev_tick_player: EventReader<TickPlayerEvent>,
@@ -50,10 +64,10 @@ fn listen_spawn_player_tick_ui(
                     },
                     Text::new(&ev.value),
                     TextFont {
-                        font_size: 25.,
+                        font_size: DEFAULT_FONT_SIZE,
                         ..default()
                     },
-                    TextColor(Color::WHITE),
+                    TextColor(Color::srgb(255., 0., 0.)),
                     TextLayout::new_with_justify(JustifyText::Center),
                     PlayerTickText,
                     InGameEntity,
@@ -105,7 +119,7 @@ fn spawn_timer_ui(mut commands: Commands, window_query: Query<&Window>) {
         },
         Text::default(),
         TextFont {
-            font_size: 50.,
+            font_size: DEFAULT_FONT_SIZE,
             ..default()
         },
         TextColor(Color::WHITE),
@@ -127,7 +141,7 @@ fn spawn_players(
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
     if let Some(texture) = hand_texture.spritesheet.as_ref() {
-        let layout = TextureAtlasLayout::from_grid(UVec2::splat(300), 4, 1, None, None);
+        let layout = TextureAtlasLayout::from_grid(UVec2::splat(150), 4, 1, None, None);
         let texture_atlas_layout = texture_atlas_layouts.add(layout);
 
         commands.spawn((
@@ -140,9 +154,10 @@ fn spawn_players(
                     layout: texture_atlas_layout.clone(),
                     index: 1,
                 }),
+                custom_size: Some(Vec2::new(500., 500.)),
                 ..default()
             },
-            Transform::from_xyz(-250., 0.0, 0.0),
+            Transform::from_xyz(-350., 0.0, 0.0),
             InGameEntity,
         ));
 
@@ -156,10 +171,11 @@ fn spawn_players(
                     layout: texture_atlas_layout,
                     index: 1,
                 }),
+                custom_size: Some(Vec2::new(500., 500.)),
                 flip_x: true,
                 ..default()
             },
-            Transform::from_xyz(250., 0.0, 0.0),
+            Transform::from_xyz(350., 0.0, 0.0),
             InGameEntity,
         ));
     }
@@ -174,17 +190,18 @@ fn spawn_play_state_text(mut commands: Commands, query: Query<&Window>) {
             width: Val::Px(dimensions[0]),
             height: Val::Px(dimensions[1]),
             position_type: PositionType::Absolute,
-            bottom: Val::Px(25. - (dimensions[1] / 2.)),
+            bottom: Val::Px(150. - (dimensions[1] / 2.)),
             left: Val::Px(window.width() / 2. - (dimensions[0] / 2.)),
             ..default()
         },
         Text::default(),
         TextFont {
-            font_size: 30.,
+            font_size: DEFAULT_FONT_SIZE,
             ..default()
         },
         TextColor(Color::WHITE),
         TextLayout::new_with_justify(JustifyText::Center),
+        GlobalZIndex(1),
         PlayStateText,
         InGameEntity,
     ));
@@ -208,17 +225,18 @@ fn spawn_round_number_text(mut commands: Commands, query: Query<&Window>) {
             width: Val::Px(dimensions[0]),
             height: Val::Px(dimensions[1]),
             position_type: PositionType::Absolute,
-            bottom: Val::Px(45. - (dimensions[1] / 2.)),
+            bottom: Val::Px(200. - (dimensions[1] / 2.)),
             left: Val::Px(window.width() / 2. - (dimensions[0] / 2.)),
             ..default()
         },
         Text::new(format!("Round 1/{}", N_MAX_ROUND)),
         TextFont {
-            font_size: 15.,
+            font_size: DEFAULT_FONT_SIZE,
             ..default()
         },
         TextColor(Color::WHITE),
         TextLayout::new_with_justify(JustifyText::Center),
+        GlobalZIndex(1),
         RoundNumberText,
         InGameEntity,
     ));
@@ -230,59 +248,6 @@ fn round_number_text_update(
 ) {
     for mut text in &mut query {
         **text = format!("Round {}/{}", round_counter.0, N_MAX_ROUND);
-    }
-}
-
-fn spawn_player_state_text(
-    mut commands: Commands,
-    window_query: Query<&Window>,
-    query: Query<(&Transform, &PlayerState, &Player), With<Player>>,
-) {
-    let window = window_query.single();
-    let dimensions = [250., 125.];
-
-    for (transform, player_state, player) in &query {
-        commands.spawn((
-            Node {
-                width: Val::Px(dimensions[0]),
-                height: Val::Px(dimensions[1]),
-                position_type: PositionType::Absolute,
-                bottom: Val::Px(
-                    transform.translation.y + window.height() / 2. - (dimensions[1] / 2.) - 125.,
-                ),
-                left: Val::Px(transform.translation.x + window.width() / 2. - (dimensions[0] / 2.)),
-                align_content: AlignContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            Text::new(format!("{:?}", player_state)),
-            TextFont {
-                font_size: 10.,
-                ..default()
-            },
-            TextColor(Color::WHITE),
-            TextLayout::new_with_justify(JustifyText::Center),
-            PlayerStateText {
-                value: player.value,
-            },
-            InGameEntity,
-        ));
-    }
-}
-
-fn player_state_text_update(
-    mut ev_player_state: EventReader<PlayerStateChangeEvent>,
-    mut query_ui: Query<(&mut Text, &PlayerStateText), With<PlayerStateText>>,
-    query_state: Query<(&PlayerState, &Player), With<Player>>,
-) {
-    for _ev in ev_player_state.read() {
-        for (mut text, player_state_text) in &mut query_ui {
-            for (player_state, player) in &query_state {
-                if player_state_text.value == player.value {
-                    **text = format!("{:?}", player_state);
-                }
-            }
-        }
     }
 }
 
@@ -329,7 +294,7 @@ fn spawn_health_text(
             },
             Text::default(),
             TextFont {
-                font_size: 20.,
+                font_size: DEFAULT_FONT_SIZE,
                 ..default()
             },
             TextColor(Color::WHITE),
@@ -337,6 +302,7 @@ fn spawn_health_text(
             HealthText {
                 value: player.value,
             },
+            GlobalZIndex(1),
             InGameEntity,
         ));
     }
@@ -383,7 +349,7 @@ fn spawn_bullet_text(
             },
             Text::default(),
             TextFont {
-                font_size: 20.,
+                font_size: DEFAULT_FONT_SIZE,
                 ..default()
             },
             TextColor(Color::WHITE),
@@ -437,7 +403,7 @@ fn spawn_dodge_text(
             },
             Text::default(),
             TextFont {
-                font_size: 20.,
+                font_size: DEFAULT_FONT_SIZE,
                 ..default()
             },
             TextColor(Color::WHITE),
@@ -486,13 +452,8 @@ fn listen_game_overs(
     mut ev_game_over: EventReader<GameOverEvent>,
     mut next_play_state: ResMut<NextState<PlayStates>>,
 ) {
-    for ev in ev_game_over.read() {
+    for _ev in ev_game_over.read() {
         next_play_state.set(PlayStates::GameOver);
-
-        match ev.state {
-            GameOvers::Tie => println!("It's a tie!"),
-            GameOvers::Winner => println!("Player {} won!", ev.player.unwrap()),
-        }
     }
 }
 
@@ -518,7 +479,7 @@ fn listen_spawn_alert_text(
             },
             Text::new(&ev.value),
             TextFont {
-                font_size: 100.,
+                font_size: DEFAULT_FONT_SIZE,
                 ..default()
             },
             TextColor(Color::WHITE),
@@ -539,10 +500,10 @@ pub fn plugin(app: &mut App) {
     app.add_systems(
         OnEnter(AppStates::InGame),
         (
+            spawn_bg,
             spawn_players,
             (
                 spawn_play_state_text,
-                spawn_player_state_text,
                 spawn_round_number_text,
                 spawn_health_text,
                 spawn_bullet_text,
@@ -563,7 +524,6 @@ pub fn plugin(app: &mut App) {
         (
             listen_game_overs,
             listen_spawn_alert_text,
-            player_state_text_update,
             round_number_text_update,
             play_state_text_update,
             player_state_hand_texture_update,

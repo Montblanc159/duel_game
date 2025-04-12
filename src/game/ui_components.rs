@@ -7,11 +7,6 @@ pub struct PlayStateText;
 pub struct RoundNumberText;
 
 #[derive(Component)]
-pub struct PlayerStateText {
-    pub value: u8,
-}
-
-#[derive(Component)]
 pub struct HealthText {
     pub value: u8,
 }
