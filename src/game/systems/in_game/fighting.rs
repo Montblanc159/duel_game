@@ -1,84 +1,62 @@
 use super::*;
 
 pub fn fight(
-    query: Query<(&PlayerState, &Luck, &Marksmanship, &Damage, &Player), With<Player>>,
-    mut ev_damage: EventWriter<DamageEvent>,
-    mut ev_dodged: EventWriter<DodgedEvent>,
-    mut ev_missed: EventWriter<MissedEvent>,
+    query: Query<(&PlayerState, &Player, &Target, &Damage, &Marksmanship), With<Player>>,
+    mut ev_attack: EventWriter<AttackEvent>,
+    mut ev_depleted: EventWriter<DepletedEvent>,
 ) {
-    let mut query_mut = query.iter_combinations();
-    while let Some(
-        [(state_0, luck_0, marksmanship_0, damage_0, player_0), (state_1, luck_1, marksmanship_1, damage_1, player_1)],
-    ) = query_mut.fetch_next()
-    {
-        match [state_0.0, state_1.0] {
-            [PlayerStates::Attacking, PlayerStates::Attacking] => {
-                if marksmanship_1.value.roll() > luck_0.value.roll() {
-                    ev_damage.send(DamageEvent {
-                        player: player_0.value,
-                        value: damage_1.value,
-                    });
-                } else {
-                    ev_missed.send(MissedEvent {
-                        player: player_0.value,
-                    });
-                }
+    for (player_state, player, target, damage, marksmanship) in &query {
+        match player_state.0 {
+            PlayerStates::Attacking => {
+                ev_attack.send(AttackEvent {
+                    player: target.value,
+                    damage: damage.value,
+                    marksmanship: marksmanship.value,
+                });
+            }
+            PlayerStates::NotAttacking => {
+                ev_depleted.send(DepletedEvent {
+                    player: player.value,
+                    source: DepletedSources::Bullets,
+                });
+            }
+            _ => {}
+        }
+    }
+}
 
-                if marksmanship_0.value.roll() > luck_1.value.roll() {
-                    ev_damage.send(DamageEvent {
-                        player: player_1.value,
-                        value: damage_0.value,
-                    });
-                } else {
-                    ev_missed.send(MissedEvent {
-                        player: player_1.value,
-                    });
+pub fn listen_attack_event(
+    mut ev_attack: EventReader<AttackEvent>,
+    mut ev_dodged: EventWriter<DodgedEvent>,
+    mut ev_damage: EventWriter<DamageEvent>,
+    mut ev_depleted: EventWriter<DepletedEvent>,
+    query: Query<(&Player, &PlayerState), With<Player>>,
+) {
+    for ev in ev_attack.read() {
+        for (player, player_state) in &query {
+            if ev.player == player.value {
+                match player_state.0 {
+                    PlayerStates::Dodging => {
+                        ev_dodged.send(DodgedEvent {
+                            player: player.value,
+                        });
+                    }
+                    state => {
+                        if state == PlayerStates::NotDodging {
+                            ev_depleted.send(DepletedEvent {
+                                player: player.value,
+                                source: DepletedSources::Dodges,
+                            });
+                        }
+
+                        ev_damage.send(DamageEvent {
+                            player: player.value,
+                            value: ev.damage,
+                            marksmanship: ev.marksmanship,
+                        });
+                    }
                 }
             }
-            [PlayerStates::Attacking, PlayerStates::Idle
-            | PlayerStates::NotAttacking
-            | PlayerStates::NotDodging
-            | PlayerStates::Buffing] => {
-                if marksmanship_0.value.roll() > luck_1.value.roll() {
-                    ev_damage.send(DamageEvent {
-                        player: player_1.value,
-                        value: damage_0.value,
-                    });
-                } else {
-                    ev_missed.send(MissedEvent {
-                        player: player_1.value,
-                    });
-                }
-            }
-            [PlayerStates::Idle
-            | PlayerStates::NotAttacking
-            | PlayerStates::NotDodging
-            | PlayerStates::Buffing, PlayerStates::Attacking] => {
-                if marksmanship_1.value.roll() > luck_0.value.roll() {
-                    ev_damage.send(DamageEvent {
-                        player: player_0.value,
-                        value: damage_1.value,
-                    });
-                } else {
-                    ev_missed.send(MissedEvent {
-                        player: player_0.value,
-                    });
-                }
-            }
-            [PlayerStates::Dodging, PlayerStates::Attacking] => {
-                ev_dodged.send(DodgedEvent {
-                    player: player_0.value,
-                });
-            }
-            [PlayerStates::Attacking, PlayerStates::Dodging] => {
-                ev_dodged.send(DodgedEvent {
-                    player: player_1.value,
-                });
-            }
-            _ => {} // [PlayerStates::Dodging, PlayerStates::Idle] => {},
-                    // [PlayerStates::Dodging, PlayerStates::Dodging] => {},
-                    // [PlayerStates::Idle, PlayerStates::Dodging] => {},
-                    // [PlayerStates::Idle, PlayerStates::Idle] => {},
         }
     }
 }
@@ -86,17 +64,24 @@ pub fn fight(
 pub fn listen_damage_event(
     mut ev_damage: EventReader<DamageEvent>,
     mut ev_tick_player: EventWriter<TickPlayerEvent>,
-    mut query: Query<(&mut Health, &Player), With<Player>>,
+    mut ev_missed: EventWriter<MissedEvent>,
+    mut query: Query<(&mut Health, &Player, &Luck), With<Player>>,
 ) {
     for ev in ev_damage.read() {
-        for (mut health, player) in &mut query {
+        for (mut health, player, luck) in &mut query {
             if player.value == ev.player {
-                health.value = health.value.checked_sub(ev.value).unwrap_or(0);
+                if ev.marksmanship.roll() > luck.value.roll() {
+                    health.value = health.value.checked_sub(ev.value).unwrap_or(0);
 
-                ev_tick_player.send(TickPlayerEvent {
-                    player: player.value,
-                    value: format!("\n-{}", ev.value),
-                });
+                    ev_tick_player.send(TickPlayerEvent {
+                        player: player.value,
+                        value: format!("\n-{}", ev.value),
+                    });
+                } else {
+                    ev_missed.send(MissedEvent {
+                        player: player.value,
+                    });
+                }
             }
         }
     }
@@ -130,6 +115,28 @@ pub fn listen_dodged_event(
                 ev_tick_player.send(TickPlayerEvent {
                     player: player.value,
                     value: "\nDodged!".into(),
+                });
+            }
+        }
+    }
+}
+
+pub fn listen_depleted_event(
+    mut ev_dodged: EventReader<DepletedEvent>,
+    mut ev_tick_player: EventWriter<TickPlayerEvent>,
+    query: Query<&Player>,
+) {
+    for ev in ev_dodged.read() {
+        for player in &query {
+            if player.value == ev.player {
+                let msg = match ev.source {
+                    DepletedSources::Dodges => "\nCan't dodge!",
+                    DepletedSources::Bullets => "\nOut of mana!",
+                };
+
+                ev_tick_player.send(TickPlayerEvent {
+                    player: player.value,
+                    value: msg.into(),
                 });
             }
         }
@@ -219,11 +226,18 @@ pub fn plugin(app: &mut App) {
     app.add_systems(
         Update,
         (
+            listen_attack_event,
             listen_damage_event,
             listen_missed_event,
             listen_dodged_event,
+            listen_depleted_event,
             (next_play_state)
                 .run_if(check_fighting_phase_ended)
+                .run_if(events_empty::<AttackEvent>)
+                .run_if(events_empty::<DodgedEvent>)
+                .run_if(events_empty::<DepletedEvent>)
+                .run_if(events_empty::<MissedEvent>)
+                .run_if(events_empty::<DamageEvent>)
                 .run_if(events_empty::<TickPlayerEvent>),
         )
             .run_if(in_state(PlayStates::Fighting))

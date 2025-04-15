@@ -18,9 +18,28 @@ pub struct PlayerStateChangeEvent {
 }
 
 #[derive(Event)]
+pub struct AttackEvent {
+    pub player: u8,
+    pub damage: u8,
+    pub marksmanship: Dice,
+}
+
+pub enum DepletedSources {
+    Bullets,
+    Dodges,
+}
+
+#[derive(Event)]
+pub struct DepletedEvent {
+    pub player: u8,
+    pub source: DepletedSources,
+}
+
+#[derive(Event)]
 pub struct DamageEvent {
     pub player: u8,
     pub value: u8,
+    pub marksmanship: Dice,
 }
 
 #[derive(Event)]
@@ -47,7 +66,9 @@ pub struct AlertEvent {
 pub(super) fn plugin(app: &mut App) {
     app.add_event::<GameOverEvent>();
     app.add_event::<PlayerStateChangeEvent>();
+    app.add_event::<AttackEvent>();
     app.add_event::<DamageEvent>();
+    app.add_event::<DepletedEvent>();
     app.add_event::<MissedEvent>();
     app.add_event::<DodgedEvent>();
     app.add_event::<TickPlayerEvent>();

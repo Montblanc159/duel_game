@@ -27,6 +27,11 @@ pub struct Player {
 }
 
 #[derive(Component)]
+pub struct Target {
+    pub value: u8,
+}
+
+#[derive(Component)]
 pub struct Health {
     pub value: u8,
 }
@@ -39,6 +44,7 @@ impl Default for Health {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Dice {
     pub value: u8,
 }

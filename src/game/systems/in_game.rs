@@ -147,6 +147,7 @@ fn spawn_players(
 
         commands.spawn((
             Player { value: 1 },
+            Target { value: 2 },
             KeyAssignment(PLAYER_ONE_KEYS),
             PlayerState(PlayerStates::Idle),
             Sprite {
@@ -164,6 +165,7 @@ fn spawn_players(
 
         commands.spawn((
             Player { value: 2 },
+            Target { value: 1 },
             KeyAssignment(PLAYER_TWO_KEYS),
             PlayerState(PlayerStates::Idle),
             Sprite {
@@ -310,7 +312,7 @@ fn health_bar_update(
         for (health, player) in &query_state {
             if health_bar.value == player.value {
                 if let Some(atlas) = &mut sprite.texture_atlas {
-                    atlas.index = 3 - health.value as usize;
+                    atlas.index = 3_u8.checked_sub(health.value).unwrap_or(0) as usize;
                 }
             }
         }
@@ -364,7 +366,7 @@ fn mana_bar_update(
         for (bullets, player) in &query_state {
             if mana_bar.value == player.value {
                 if let Some(atlas) = &mut sprite.texture_atlas {
-                    atlas.index = 3 - bullets.value as usize;
+                    atlas.index = 3_u8.checked_sub(bullets.value).unwrap_or(0) as usize;
                 }
             }
         }
@@ -418,7 +420,7 @@ fn stamina_bar_update(
         for (dodges, player) in &query_state {
             if mana_bar.value == player.value {
                 if let Some(atlas) = &mut sprite.texture_atlas {
-                    atlas.index = 3 - dodges.value as usize;
+                    atlas.index = 3_u8.checked_sub(dodges.value).unwrap_or(0) as usize;
                 }
             }
         }

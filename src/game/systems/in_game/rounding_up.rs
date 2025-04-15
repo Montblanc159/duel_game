@@ -212,11 +212,9 @@ pub fn plugin(app: &mut App) {
 
     app.add_systems(
         Update,
-        (
-            animate_player_tick_text_opacity,
-            animate_player_tick_font_size,
-            (next_play_state).run_if(check_rounding_up_phase_ended),
-        )
+        (next_play_state
+            .run_if(check_rounding_up_phase_ended)
+            .run_if(events_empty::<TickPlayerEvent>),)
             .run_if(in_state(PlayStates::RoundingUp))
             .run_if(is_not_game_over)
             .chain()
