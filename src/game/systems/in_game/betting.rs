@@ -89,6 +89,7 @@ fn increase_damage_buff(
 fn golden_bullet_buff(
     mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &Bullets, &Player), With<Player>>,
     mut ev_tick_player: EventWriter<TickPlayerEvent>,
+    mut ev_change_player_state: EventWriter<PlayerStateChangeEvent>,
 ) {
     for (&buff, mut damage, mut player_state, bullets, player) in &mut query {
         if let Some(buff_value) = buff.value {
@@ -100,6 +101,10 @@ fn golden_bullet_buff(
                 } else {
                     PlayerStates::NotAttacking
                 };
+
+                ev_change_player_state.send(PlayerStateChangeEvent {
+                    player: player.value,
+                });
 
                 ev_tick_player.send(TickPlayerEvent {
                     player: player.value,
@@ -194,6 +199,7 @@ fn marksmanship_buff(
         With<Player>,
     >,
     mut ev_tick_player: EventWriter<TickPlayerEvent>,
+    mut ev_change_player_state: EventWriter<PlayerStateChangeEvent>,
 ) {
     for (&buff, mut marksmanship, player, bullets, mut player_state) in &mut query {
         if let Some(buff_value) = buff.value {
@@ -205,6 +211,10 @@ fn marksmanship_buff(
                 } else {
                     PlayerStates::NotAttacking
                 };
+
+                ev_change_player_state.send(PlayerStateChangeEvent {
+                    player: player.value,
+                });
 
                 ev_tick_player.send(TickPlayerEvent {
                     player: player.value,
