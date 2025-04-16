@@ -65,6 +65,7 @@ fn add_buffes(mut query: Query<(&mut Buff, &PlayerState), With<Player>>) {
 fn increase_damage_buff(
     mut query: Query<(&Buff, &mut Damage, &mut PlayerState, &Bullets, &Player), With<Player>>,
     mut ev_tick_player: EventWriter<TickPlayerEvent>,
+    mut ev_change_player_state: EventWriter<PlayerStateChangeEvent>,
 ) {
     for (&buff, mut damage, mut player_state, bullets, player) in &mut query {
         if let Some(buff_value) = buff.value {
@@ -76,6 +77,10 @@ fn increase_damage_buff(
                 } else {
                     PlayerStates::NotAttacking
                 };
+
+                ev_change_player_state.send(PlayerStateChangeEvent {
+                    player: player.value,
+                });
 
                 ev_tick_player.send(TickPlayerEvent {
                     player: player.value,
