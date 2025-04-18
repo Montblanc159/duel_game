@@ -2,6 +2,30 @@ use super::*;
 use bevy::asset::LoadState;
 use bevy::asset::UntypedAssetId;
 
+fn load_main_theme_audio(
+    asset_server: Res<AssetServer>,
+    mut hand: ResMut<assets::MainThemeAudio>,
+    mut loading: ResMut<AssetsLoading>,
+) {
+    let handle = asset_server.load("audios/main-theme.wav");
+
+    loading.0.push(handle.clone().untyped());
+
+    hand.audio = Some(handle);
+}
+
+fn load_menu_audio(
+    asset_server: Res<AssetServer>,
+    mut hand: ResMut<assets::MenuAudio>,
+    mut loading: ResMut<AssetsLoading>,
+) {
+    let handle = asset_server.load("audios/menu-audio.wav");
+
+    loading.0.push(handle.clone().untyped());
+
+    hand.audio = Some(handle);
+}
+
 fn load_hands_textures(
     asset_server: Res<AssetServer>,
     mut hand: ResMut<assets::HandSpritesheet>,
@@ -73,15 +97,13 @@ fn check_assets_loaded(
         }
         LoadState::Loaded => {
             loading.0 = vec![];
-            next_app_state.set(AppStates::InGame);
+            next_app_state.set(AppStates::Menu);
         }
         _ => {}
     }
 }
 
-fn spawn_loading_text(mut commands: Commands, windows_query: Query<&Window>) {
-    let window = windows_query.single();
-
+fn spawn_loading_text(mut commands: Commands, window: Single<&Window>) {
     commands
         .spawn((
             Node {
@@ -138,6 +160,8 @@ pub fn plugin(app: &mut App) {
     app.add_systems(
         OnEnter(AppStates::Loading),
         (
+            load_main_theme_audio,
+            load_menu_audio,
             load_hands_textures,
             load_bg_textures,
             load_health_textures,

@@ -1,4 +1,12 @@
+# builds
 /target
-/assets/fonts/*
 
+# fonts
+/assets/fonts/*
 !/assets/fonts/game-font.ttf
+
+
+# audios
+/assets/audios/*
+!/assets/audios/main-theme.wav
+!/assets/audios/menu-audio.wav

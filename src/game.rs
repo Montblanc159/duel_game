@@ -25,8 +25,8 @@ pub(super) fn plugin(app: &mut App) {
     app.add_plugins((events::plugin, resources::plugin, states::plugin));
 
     app.add_plugins((
-        systems::menu::plugin,
         systems::loading::plugin,
+        systems::menu::plugin,
         systems::in_game::plugin,
     ));
     app.add_plugins((

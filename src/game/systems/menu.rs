@@ -6,8 +6,21 @@ fn wait_for_input_to_start_game(
 ) {
     for key in keys.get_just_pressed() {
         if *key == KeyCode::Enter {
-            next_app_state.set(AppStates::Loading);
+            next_app_state.set(AppStates::InGame);
         }
+    }
+}
+
+fn spawn_menu_audio(mut commands: Commands, menu_audio: Res<assets::MenuAudio>) {
+    if let Some(audio) = menu_audio.audio.as_ref() {
+        commands.spawn((
+            AudioPlayer(audio.clone()),
+            PlaybackSettings {
+                mode: bevy::audio::PlaybackMode::Loop,
+                ..default()
+            },
+            MenuEntity,
+        ));
     }
 }
 
@@ -40,7 +53,10 @@ fn spawn_start_game_ui(mut commands: Commands, query: Query<&Window>) {
 }
 
 pub fn plugin(app: &mut App) {
-    app.add_systems(OnEnter(AppStates::Menu), spawn_start_game_ui);
+    app.add_systems(
+        OnEnter(AppStates::Menu),
+        (spawn_menu_audio, spawn_start_game_ui),
+    );
 
     app.add_systems(
         Update,

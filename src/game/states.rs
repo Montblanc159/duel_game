@@ -28,8 +28,8 @@ impl PlayStates {
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum AppStates {
     #[default]
-    Menu,
     Loading,
+    Menu,
     InGame,
 }
 

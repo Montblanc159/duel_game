@@ -29,6 +29,8 @@ pub(super) fn plugin(app: &mut App) {
     app.insert_resource(RoundCounter(1));
     app.insert_resource(GameOver(false));
 
+    app.insert_resource(assets::MainThemeAudio { ..default() });
+    app.insert_resource(assets::MenuAudio { ..default() });
     app.insert_resource(assets::HandSpritesheet { ..default() });
     app.insert_resource(assets::HealthSpritesheet { ..default() });
     app.insert_resource(assets::StaminaSpritesheet { ..default() });

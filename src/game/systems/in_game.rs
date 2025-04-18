@@ -21,6 +21,19 @@ fn launch_game(mut next_play_state: ResMut<NextState<PlayStates>>) {
     next_play_state.set(PlayStates::Countdown);
 }
 
+fn spawn_main_theme(mut commands: Commands, main_theme: Res<assets::MainThemeAudio>) {
+    if let Some(audio) = main_theme.audio.as_ref() {
+        commands.spawn((
+            AudioPlayer(audio.clone()),
+            PlaybackSettings {
+                mode: bevy::audio::PlaybackMode::Loop,
+                ..default()
+            },
+            InGameEntity,
+        ));
+    }
+}
+
 fn spawn_bg(mut commands: Commands, bg_texture: Res<assets::BgSprite>, window: Single<&Window>) {
     if let Some(texture) = bg_texture.sprite.as_ref() {
         commands.spawn((
@@ -503,6 +516,7 @@ pub fn plugin(app: &mut App) {
     app.add_systems(
         OnEnter(AppStates::InGame),
         (
+            spawn_main_theme,
             spawn_bg,
             spawn_players,
             (
