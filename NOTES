@@ -4,13 +4,11 @@ DOING:
 
 - Graphics & anims !!
     - add animated background
-    - bigger gap between hands, bigger hands
     - animate each hand position
     - add animated transition between hand changes
     - add buff graphically to hands
     - add camera shakes
     - stylize timers
-    - stylize health/dodges/bullets
     - stylize round
     - stylize round name
     - add shooting animation
@@ -25,7 +23,6 @@ TODOORNOTODO? :
 - add pause system ?
 - lucky charm should do nothing more chance of avoiding ?
 - refactor with system sets ?
-- refactor opacity and scale to be it's own components and always running? (perf ?)
 
 TODO:
 - Audio

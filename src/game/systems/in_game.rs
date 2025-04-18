@@ -39,11 +39,14 @@ fn listen_spawn_player_tick_ui(
     mut commands: Commands,
     mut ev_tick_player: EventReader<TickPlayerEvent>,
     query: Query<(&Player, &Transform), With<Player>>,
-    window_query: Query<&Window>,
+    window: Single<&Window>,
 ) {
     for ev in ev_tick_player.read() {
-        let window = window_query.single();
         let dimensions = [450., 450.];
+        let mut rng = rand::rng();
+
+        let random_left: i8 = rng.random_range(-75..75);
+        let random_bottom: i8 = rng.random_range(-75..75);
 
         for (player, transform) in &query {
             if player.value == ev.player {
@@ -53,10 +56,12 @@ fn listen_spawn_player_tick_ui(
                         height: Val::Px(dimensions[1]),
                         position_type: PositionType::Absolute,
                         bottom: Val::Px(
-                            transform.translation.y + window.height() / 2. - (dimensions[1] / 2.),
+                            transform.translation.y + window.height() / 2. - (dimensions[1] / 2.)
+                                + random_bottom as f32,
                         ),
                         left: Val::Px(
-                            transform.translation.x + window.width() / 2. - (dimensions[0] / 2.),
+                            transform.translation.x + window.width() / 2. - (dimensions[0] / 2.)
+                                + random_left as f32,
                         ),
                         align_content: AlignContent::Center,
                         align_items: AlignItems::Center,
@@ -64,7 +69,7 @@ fn listen_spawn_player_tick_ui(
                     },
                     Text::new(&ev.value),
                     TextFont {
-                        font_size: DEFAULT_FONT_SIZE,
+                        font_size: DEFAULT_FONT_SIZE * 0.25,
                         ..default()
                     },
                     TextColor(Color::srgb(255., 0., 0.)),

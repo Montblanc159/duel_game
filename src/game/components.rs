@@ -52,9 +52,8 @@ pub struct Dice {
 impl Dice {
     pub fn roll(&self) -> u8 {
         let mut rng = rand::rng();
-        let nums: Vec<u8> = (1..self.value).collect();
 
-        *nums.choose(&mut rng).unwrap()
+        rng.random_range(1..self.value)
     }
 }
 
