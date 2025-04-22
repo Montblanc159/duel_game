@@ -29,8 +29,17 @@ pub(super) fn plugin(app: &mut App) {
     app.insert_resource(RoundCounter(1));
     app.insert_resource(GameOver(false));
 
+    // Audios
     app.insert_resource(assets::MainThemeAudio { ..default() });
     app.insert_resource(assets::MenuAudio { ..default() });
+    app.insert_resource(assets::StateChangeAudio { ..default() });
+    app.insert_resource(assets::MenuTransitionAudio { ..default() });
+    app.insert_resource(assets::ShootAudio { ..default() });
+    app.insert_resource(assets::DodgeAudio { ..default() });
+    app.insert_resource(assets::BuffAudio { ..default() });
+    app.insert_resource(assets::DamageAudio { ..default() });
+
+    // Textures
     app.insert_resource(assets::HandSpritesheet { ..default() });
     app.insert_resource(assets::HealthSpritesheet { ..default() });
     app.insert_resource(assets::StaminaSpritesheet { ..default() });

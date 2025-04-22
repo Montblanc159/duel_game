@@ -183,6 +183,9 @@ impl Default for HandTextureIndices {
     }
 }
 
+#[derive(Component)]
+pub struct DeletableAudio;
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum PlayerStates {
     #[default]

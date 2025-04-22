@@ -2,6 +2,8 @@ use super::*;
 use bevy::asset::LoadState;
 use bevy::asset::UntypedAssetId;
 
+// AUDIOS
+
 fn load_main_theme_audio(
     asset_server: Res<AssetServer>,
     mut hand: ResMut<assets::MainThemeAudio>,
@@ -25,6 +27,80 @@ fn load_menu_audio(
 
     hand.audio = Some(handle);
 }
+
+fn load_menu_transition_audio(
+    asset_server: Res<AssetServer>,
+    mut hand: ResMut<assets::MenuTransitionAudio>,
+    mut loading: ResMut<AssetsLoading>,
+) {
+    let handle = asset_server.load("audios/menu-transition.wav");
+
+    loading.0.push(handle.clone().untyped());
+
+    hand.audio = Some(handle);
+}
+
+fn load_shoot_audio(
+    asset_server: Res<AssetServer>,
+    mut hand: ResMut<assets::ShootAudio>,
+    mut loading: ResMut<AssetsLoading>,
+) {
+    let handle = asset_server.load("audios/shoot.wav");
+
+    loading.0.push(handle.clone().untyped());
+
+    hand.audio = Some(handle);
+}
+
+fn load_dodge_audio(
+    asset_server: Res<AssetServer>,
+    mut hand: ResMut<assets::DodgeAudio>,
+    mut loading: ResMut<AssetsLoading>,
+) {
+    let handle = asset_server.load("audios/dodge.wav");
+
+    loading.0.push(handle.clone().untyped());
+
+    hand.audio = Some(handle);
+}
+
+fn load_buff_audio(
+    asset_server: Res<AssetServer>,
+    mut hand: ResMut<assets::BuffAudio>,
+    mut loading: ResMut<AssetsLoading>,
+) {
+    let handle = asset_server.load("audios/buff.wav");
+
+    loading.0.push(handle.clone().untyped());
+
+    hand.audio = Some(handle);
+}
+
+fn load_damage_audio(
+    asset_server: Res<AssetServer>,
+    mut hand: ResMut<assets::DamageAudio>,
+    mut loading: ResMut<AssetsLoading>,
+) {
+    let handle = asset_server.load("audios/damage.wav");
+
+    loading.0.push(handle.clone().untyped());
+
+    hand.audio = Some(handle);
+}
+
+fn load_state_change_audio(
+    asset_server: Res<AssetServer>,
+    mut hand: ResMut<assets::StateChangeAudio>,
+    mut loading: ResMut<AssetsLoading>,
+) {
+    let handle = asset_server.load("audios/state-change.wav");
+
+    loading.0.push(handle.clone().untyped());
+
+    hand.audio = Some(handle);
+}
+
+// TEXTURES
 
 fn load_hands_textures(
     asset_server: Res<AssetServer>,
@@ -85,6 +161,8 @@ fn load_bg_textures(
 
     hand.sprite = Some(bg_sprite_handle);
 }
+
+// GENERICS
 
 fn check_assets_loaded(
     server: Res<AssetServer>,
@@ -160,18 +238,28 @@ pub fn plugin(app: &mut App) {
     app.add_systems(
         OnEnter(AppStates::Loading),
         (
-            load_main_theme_audio,
-            load_menu_audio,
-            load_hands_textures,
-            load_bg_textures,
-            load_health_textures,
-            load_mana_textures,
-            load_stamina_textures,
-        ),
+            spawn_loading_text,
+            (
+                load_main_theme_audio,
+                load_menu_audio,
+                load_menu_transition_audio,
+                load_shoot_audio,
+                load_dodge_audio,
+                load_buff_audio,
+                load_damage_audio,
+                load_state_change_audio,
+                load_hands_textures,
+                load_bg_textures,
+                load_health_textures,
+                load_mana_textures,
+                load_stamina_textures,
+            ),
+        )
+            .chain(),
     );
     app.add_systems(
         Update,
-        (spawn_loading_text, check_assets_loaded).run_if(in_state(AppStates::Loading)),
+        check_assets_loaded.run_if(in_state(AppStates::Loading)),
     );
     app.add_systems(OnExit(AppStates::Loading), clean_system::<LoadingEntity>);
 }

@@ -1,5 +1,7 @@
 use super::*;
 
+// AUDIO
+
 #[derive(Resource, Default)]
 pub struct MainThemeAudio {
     pub audio: Option<Handle<AudioSource>>,
@@ -9,6 +11,38 @@ pub struct MainThemeAudio {
 pub struct MenuAudio {
     pub audio: Option<Handle<AudioSource>>,
 }
+
+#[derive(Resource, Default)]
+pub struct MenuTransitionAudio {
+    pub audio: Option<Handle<AudioSource>>,
+}
+
+#[derive(Resource, Default)]
+pub struct ShootAudio {
+    pub audio: Option<Handle<AudioSource>>,
+}
+
+#[derive(Resource, Default)]
+pub struct DodgeAudio {
+    pub audio: Option<Handle<AudioSource>>,
+}
+
+#[derive(Resource, Default)]
+pub struct BuffAudio {
+    pub audio: Option<Handle<AudioSource>>,
+}
+
+#[derive(Resource, Default)]
+pub struct DamageAudio {
+    pub audio: Option<Handle<AudioSource>>,
+}
+
+#[derive(Resource, Default)]
+pub struct StateChangeAudio {
+    pub audio: Option<Handle<AudioSource>>,
+}
+
+// Textures
 
 #[derive(Resource, Default)]
 pub struct HandSpritesheet {

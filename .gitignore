@@ -2,11 +2,7 @@
 /target
 
 # fonts
-/assets/fonts/*
-!/assets/fonts/game-font.ttf
-
+/assets/fonts/alternates/*
 
 # audios
-/assets/audios/*
-!/assets/audios/main-theme.wav
-!/assets/audios/menu-audio.wav
+/assets/audios/originals/*

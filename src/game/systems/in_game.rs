@@ -82,10 +82,10 @@ fn listen_spawn_player_tick_ui(
                     },
                     Text::new(&ev.value),
                     TextFont {
-                        font_size: DEFAULT_FONT_SIZE * 0.25,
+                        font_size: DEFAULT_FONT_SIZE * 0.5,
                         ..default()
                     },
-                    TextColor(Color::srgb(255., 0., 0.)),
+                    TextColor(Color::srgb(110. / 255., 15. / 255., 240. / 255.)),
                     TextLayout::new_with_justify(JustifyText::Center),
                     GlobalZIndex(1),
                     PlayerTickText,
@@ -281,6 +281,23 @@ fn player_state_hand_texture_update(
                     atlas.index = player_state.derive_hand_texture_index(hand_texture_indices);
                 }
             }
+        }
+    }
+}
+
+fn player_state_audio_read(
+    mut ev_player_state: EventReader<PlayerStateChangeEvent>,
+    mut commands: Commands,
+    state_change_audio: Res<assets::StateChangeAudio>,
+) {
+    for _ev in ev_player_state.read() {
+        if let Some(audio) = state_change_audio.audio.as_ref() {
+            commands.spawn((
+                AudioPlayer(audio.clone()),
+                PlaybackSettings { ..default() },
+                DeletableAudio,
+                InGameEntity,
+            ));
         }
     }
 }
@@ -539,6 +556,8 @@ pub fn plugin(app: &mut App) {
     app.add_systems(
         Update,
         (
+            clean_deletable_audios,
+            player_state_audio_read,
             listen_game_overs,
             listen_spawn_alert_text,
             listen_spawn_player_tick_ui,
