@@ -53,9 +53,22 @@ fn set_player_state(
     }
 }
 
-fn add_buffes(mut query: Query<(&mut Buff, &PlayerState), With<Player>>) {
+fn add_buffes(
+    mut query: Query<(&mut Buff, &PlayerState), With<Player>>,
+    mut commands: Commands,
+    buff_audio: Res<assets::BuffAudio>,
+) {
     for (mut buff, player_state) in &mut query {
         if player_state.0 == PlayerStates::Buffing {
+            if let Some(audio) = buff_audio.audio.as_ref() {
+                commands.spawn((
+                    AudioPlayer(audio.clone()),
+                    PlaybackSettings { ..default() },
+                    InGameEntity,
+                    DeletableAudio,
+                ));
+            }
+
             let random_buff: Buffes = rand::random();
             buff.value = Some(random_buff);
         }

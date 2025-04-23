@@ -26,13 +26,12 @@ TODOORNOTODO? :
 
 TODO:
 - Audio
-    - add audio FX for each hand position changes
-    - add music (each round different ? Menu + InGame music)
     - add timer sound
     - add clonk sound if typing has no effect
     - add sound upon clicking space to launch new round
     - add sound upon exiting game
     - add sound upon entering game
+    - depleted and missed audio
 
 
 -----
