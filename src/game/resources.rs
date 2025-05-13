@@ -33,6 +33,7 @@ pub(super) fn plugin(app: &mut App) {
     app.insert_resource(assets::MainThemeAudio { ..default() });
     app.insert_resource(assets::MenuAudio { ..default() });
     app.insert_resource(assets::StateChangeAudio { ..default() });
+    app.insert_resource(assets::ClickAudio { ..default() });
     app.insert_resource(assets::MenuTransitionAudio { ..default() });
     app.insert_resource(assets::ShootAudio { ..default() });
     app.insert_resource(assets::DodgeAudio { ..default() });

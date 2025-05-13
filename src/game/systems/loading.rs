@@ -28,6 +28,18 @@ fn load_menu_audio(
     hand.audio = Some(handle);
 }
 
+fn load_click_audio(
+    asset_server: Res<AssetServer>,
+    mut click: ResMut<assets::ClickAudio>,
+    mut loading: ResMut<AssetsLoading>,
+) {
+    let handle = asset_server.load("audios/click.wav");
+
+    loading.0.push(handle.clone().untyped());
+
+    click.audio = Some(handle);
+}
+
 fn load_menu_transition_audio(
     asset_server: Res<AssetServer>,
     mut hand: ResMut<assets::MenuTransitionAudio>,
@@ -242,6 +254,7 @@ pub fn plugin(app: &mut App) {
             (
                 load_main_theme_audio,
                 load_menu_audio,
+                load_click_audio,
                 load_menu_transition_audio,
                 load_shoot_audio,
                 load_dodge_audio,

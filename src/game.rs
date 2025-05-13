@@ -25,10 +25,12 @@ pub(super) fn plugin(app: &mut App) {
     app.add_plugins((events::plugin, resources::plugin, states::plugin));
 
     app.add_plugins((
+        systems::plugin,
         systems::loading::plugin,
         systems::menu::plugin,
         systems::in_game::plugin,
     ));
+
     app.add_plugins((
         // Chronological order
         systems::in_game::preparing::plugin,

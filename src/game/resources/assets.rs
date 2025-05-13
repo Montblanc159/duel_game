@@ -18,6 +18,11 @@ pub struct MenuTransitionAudio {
 }
 
 #[derive(Resource, Default)]
+pub struct ClickAudio {
+    pub audio: Option<Handle<AudioSource>>,
+}
+
+#[derive(Resource, Default)]
 pub struct ShootAudio {
     pub audio: Option<Handle<AudioSource>>,
 }

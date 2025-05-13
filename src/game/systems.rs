@@ -26,3 +26,28 @@ fn clean_deletable_audios(
         }
     }
 }
+
+fn audio_react_to_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut next_app_state: ResMut<NextState<AppStates>>,
+    mut commands: Commands,
+    click_audio: Res<assets::ClickAudio>,
+) {
+    for key in keys.get_just_pressed() {
+        if *key == KeyCode::Enter {
+            if let Some(audio) = click_audio.audio.as_ref() {
+                commands.spawn((
+                    AudioPlayer(audio.clone()),
+                    PlaybackSettings { ..default() },
+                    DeletableAudio,
+                ));
+            };
+
+            next_app_state.set(AppStates::InGame);
+        }
+    }
+}
+
+pub fn plugin(app: &mut App) {
+    app.add_systems(Update, clean_deletable_audios);
+}

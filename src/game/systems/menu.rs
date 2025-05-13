@@ -3,9 +3,19 @@ use super::*;
 fn wait_for_input_to_start_game(
     keys: Res<ButtonInput<KeyCode>>,
     mut next_app_state: ResMut<NextState<AppStates>>,
+    mut commands: Commands,
+    menu_transition_audio: Res<assets::MenuTransitionAudio>,
 ) {
     for key in keys.get_just_pressed() {
         if *key == KeyCode::Enter {
+            if let Some(audio) = menu_transition_audio.audio.as_ref() {
+                commands.spawn((
+                    AudioPlayer(audio.clone()),
+                    PlaybackSettings { ..default() },
+                    DeletableAudio,
+                ));
+            };
+
             next_app_state.set(AppStates::InGame);
         }
     }
@@ -60,7 +70,10 @@ pub fn plugin(app: &mut App) {
 
     app.add_systems(
         Update,
-        wait_for_input_to_start_game.run_if(in_state(AppStates::Menu)),
+        (
+            audio_react_to_input,
+            wait_for_input_to_start_game.run_if(in_state(AppStates::Menu)),
+        ),
     );
 
     app.add_systems(OnExit(AppStates::Menu), clean_system::<MenuEntity>);

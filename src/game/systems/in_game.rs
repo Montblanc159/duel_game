@@ -556,7 +556,7 @@ pub fn plugin(app: &mut App) {
     app.add_systems(
         Update,
         (
-            clean_deletable_audios,
+            audio_react_to_input,
             player_state_audio_read,
             listen_game_overs,
             listen_spawn_alert_text,
