@@ -17,3 +17,5 @@ If first solution doesn't work
 ```bash
 rm -rf ~/.cargo/registry/index/* ~/.cargo/.package-cache
 ```
+
+Made with <3 by GZ
